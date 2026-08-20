@@ -1,0 +1,119 @@
+{
+  "_ghi_chu": "Bản ghi THẬT từ apiv3.tendoo.vn — products?page=1&page_size=10&sort=newest, chụp 2026-08-10. Giữ nguyên tên trường, chỉ rút bớt còn 3 sản phẩm đại diện (tồn 22 / tồn 1 / tồn 19). KHÔNG sửa giá trị.",
+  "success": true,
+  "data": [
+    {
+      "id": "006b5c43-c052-4bb8-aa0f-971ae291334e",
+      "name": "Áo khoác dạ dáng dài nữ",
+      "product_code": "SP0095",
+      "variant_mode": "non_variant",
+      "business_id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+      "unit_name": "chiếc",
+      "variants": [
+        {
+          "id": "96e1cc02-1517-41ac-ab6f-025eec194d7c",
+          "product_id": "006b5c43-c052-4bb8-aa0f-971ae291334e",
+          "variant_code": "SP0095",
+          "base_price": 990000,
+          "unit_cost": 50000,
+          "variant_type": "stock",
+          "variant_name": "",
+          "available_quantity": 22,
+          "total_quantity": 22
+        }
+      ],
+      "stock_mode": "stock_non_varriant",
+      "base_price": 990000,
+      "promotion_price": 0,
+      "final_price": 990000,
+      "is_active": false,
+      "available_quantity": 22,
+      "total_stock_quantity": 22,
+      "is_out_of_stock": true,
+      "total_quantity": 22,
+      "has_hourly_rate": false,
+      "tax_rate": 1,
+      "version": 2,
+      "pit_rate": 0.5,
+      "sector_code": "1.1"
+    },
+    {
+      "id": "bcbb8973-74f5-45ad-bd57-35ab8b2d4c5d",
+      "name": "Quần Jogger thể thao nữ",
+      "product_code": "SP0035",
+      "variant_mode": "non_variant",
+      "business_id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+      "unit_name": "chiếc",
+      "variants": [
+        {
+          "id": "0b3c4516-d6be-4833-84d0-fd9a309494cf",
+          "product_id": "bcbb8973-74f5-45ad-bd57-35ab8b2d4c5d",
+          "variant_code": "SP0035",
+          "base_price": 490000,
+          "unit_cost": 950000,
+          "variant_type": "stock",
+          "variant_name": "",
+          "available_quantity": 1,
+          "total_quantity": 1
+        }
+      ],
+      "stock_mode": "stock_non_varriant",
+      "base_price": 490000,
+      "promotion_price": 0,
+      "final_price": 490000,
+      "is_active": false,
+      "available_quantity": 1,
+      "total_stock_quantity": 1,
+      "is_out_of_stock": true,
+      "total_quantity": 1,
+      "has_hourly_rate": false,
+      "tax_rate": 1,
+      "version": 2,
+      "pit_rate": 0.5,
+      "sector_code": "1.1"
+    },
+    {
+      "id": "78dcde07-ea46-4c48-bd16-550428026425",
+      "name": "Giày Boots nam cổ cao da lộn",
+      "product_code": "SP0084",
+      "variant_mode": "non_variant",
+      "business_id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+      "unit_name": "chiếc",
+      "variants": [
+        {
+          "id": "ebede044-744b-4f57-a205-9f03659800b6",
+          "product_id": "78dcde07-ea46-4c48-bd16-550428026425",
+          "variant_code": "SP0084",
+          "base_price": 1450000,
+          "unit_cost": 750000,
+          "variant_type": "stock",
+          "variant_name": "",
+          "available_quantity": 19,
+          "total_quantity": 19
+        }
+      ],
+      "stock_mode": "stock_non_varriant",
+      "base_price": 1450000,
+      "promotion_price": 0,
+      "final_price": 1450000,
+      "is_active": false,
+      "available_quantity": 19,
+      "total_stock_quantity": 19,
+      "is_out_of_stock": true,
+      "total_quantity": 19,
+      "has_hourly_rate": false,
+      "tax_rate": 1,
+      "version": 2,
+      "pit_rate": 0.5,
+      "sector_code": "1.1"
+    }
+  ],
+  "meta": {
+    "total": 177,
+    "size": 10,
+    "update_after": "2026-08-10T02:23:05.087766Z",
+    "total_pages": 18,
+    "page": 1
+  },
+  "error": { "code": "", "message": "" }
+}

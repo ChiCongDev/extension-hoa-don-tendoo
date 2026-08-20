@@ -1,0 +1,53 @@
+{
+  "_ghi_chu": "Bản ghi THẬT từ apiv3.tendoo.vn — lời gọi `info`, chụp 2026-08-10. Giữ nguyên CẤU TRÚC và tên trường. ĐÃ CHE dữ liệu cá nhân (email, số điện thoại, tên miền cửa hàng) — mã định danh cửa hàng giữ nguyên vì đó là thứ chốt chặn dùng tới, và nó không phải bí mật.",
+  "success": true,
+  "data": {
+    "account": {
+      "id": "aab4cfb7-0547-424f-9e3a-7496ade9c1eb",
+      "display_name": "CH THUỲ DƯƠNG",
+      "mobile_number": "+84XXXXXXXXX",
+      "login_identifier": "DA-CHE@example.com",
+      "avatar_url": "",
+      "is_guest": false,
+      "max_store_count": 1,
+      "store_count": 0,
+      "has_password": true,
+      "is_new_user": false,
+      "is_active": false
+    },
+    "business_info": {
+      "current_store": {
+        "id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+        "store_name": "+84XXXXXXXXX",
+        "store_domain": "DA-CHE.tendoo.click",
+        "store_address": "",
+        "store_phone": "+84XXXXXXXXX",
+        "store_status": "requested",
+        "is_closed": false,
+        "is_onboarding": false
+      },
+      "list_store": [
+        {
+          "id": "f81917ec-f3b3-46ab-9bfb-a11c5ac3e70c",
+          "business_id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+          "staff_name": "+84XXXXXXXXX",
+          "invitation_status": "verified",
+          "is_primary_store": true,
+          "is_owner": true
+        }
+      ],
+      "current_role": {
+        "id": "6c61cb75-7b82-448e-bc85-af71d0884eef",
+        "role_name": "Chủ cửa hàng",
+        "business_id": "2c683a17-09ab-4655-8dbf-50ca8105373c",
+        "is_owner": true
+      },
+      "count_owner_store": 1
+    },
+    "subscription_history": {
+      "subscription_status": "success",
+      "plan_description": "Free"
+    },
+    "status": "success"
+  }
+}

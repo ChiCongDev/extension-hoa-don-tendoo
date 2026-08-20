@@ -1,0 +1,42 @@
+/* Giao diện màn hình khai báo tài khoản Tendoo (popup/khaiBao.js vẽ ra).
+ *
+ * Dùng CHUNG cho hai nơi:
+ *   - popup.html   (cửa sổ nhỏ khi bấm biểu tượng extension)
+ *   - khaiBao.html (khung nhúng vào trang báo cáo của Sell)
+ * Để một chỗ thôi, khỏi sửa hai nơi rồi lệch nhau. */
+
+h2 { font-size: 12px; margin: 12px 0 6px; }
+.hdt-dan { color: #6b7280; font-size: 11.5px; line-height: 1.5; margin: 0 0 10px; }
+.hdt-truong { margin-bottom: 8px; }
+.hdt-truong label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 3px; }
+.hdt-truong input { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 12px;
+                    border: 1px solid #d1d5db; border-radius: 6px; }
+button { border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+         border: 1px solid #d1d5db; background: #fff; }
+button.hdt-chinh { background: #2563eb; color: #fff; border-color: #2563eb; width: 100%; }
+.hdt-loi { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+           padding: 7px 9px; border-radius: 6px; font-size: 11.5px; margin-bottom: 10px; }
+.hdt-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d;
+          padding: 7px 9px; border-radius: 6px; font-size: 11.5px; margin-bottom: 10px; }
+.hdt-dong { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+            border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px 9px; margin-bottom: 6px; }
+.hdt-phu { color: #6b7280; font-size: 10.5px; word-break: break-all; }
+.hdt-trong { color: #9ca3af; font-size: 11.5px; margin: 0 0 8px; }
+.hdt-xoa { color: #b91c1c; border-color: #fecaca; flex: none; }
+.hdt-cong-cu { display: flex; gap: 6px; margin-top: 10px; }
+.hdt-cong-cu button { flex: 1; }
+.hdt-vua-thay { border-radius: 8px; padding: 9px 11px; margin-bottom: 12px;
+                border: 1px solid #e5e7eb; background: #f9fafb; }
+.hdt-vua-thay.hdt-khop { border-color: #bbf7d0; background: #f0fdf4; }
+.hdt-vua-thay.hdt-chua-gan { border-color: #fde68a; background: #fffbeb; }
+.hdt-vua-thay.hdt-mo { color: #6b7280; }
+.hdt-nhan { font-size: 10.5px; color: #6b7280; text-transform: uppercase;
+            letter-spacing: .03em; margin-bottom: 2px; }
+.hdt-ten { font-weight: 600; font-size: 12.5px; }
+.hdt-ket-luan { margin-top: 6px; font-size: 11.5px; font-weight: 600; }
+.hdt-vua-thay.hdt-khop .hdt-ket-luan { color: #15803d; }
+.hdt-vua-thay.hdt-chua-gan .hdt-ket-luan { color: #b45309; }
+.hdt-vua-thay button { margin-top: 7px; width: 100%; }
+.hdt-sao-luu { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
+.hdt-canh-do { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+               border-radius: 7px; padding: 8px 10px; font-size: 11.5px; }

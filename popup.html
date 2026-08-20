@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <title>Hóa đơn điện tử Tendoo</title>
+    <link rel="stylesheet" href="popup/khaiBao.css">
+    <style>
+        body { font-family: system-ui, "Segoe UI", sans-serif; width: auto; min-width: 208px;
+               margin: 0; padding: 10px; color: #111827; font-size: 13px; }
+        h1 { font-size: 14px; margin: 0 0 4px; }
+        .phien-ban { color: #6b7280; font-size: 11px; margin-bottom: 12px; }
+        .khung { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e;
+                 border-radius: 8px; padding: 9px 11px; font-size: 12px; margin-bottom: 12px; }
+        .buoc { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; font-size: 12px; }
+        .buoc .dau { width: 16px; flex: none; }
+        .xong { color: #16a34a; }
+        .dang { color: #2563eb; font-weight: 600; }
+        .cho { color: #9ca3af; }
+        hr { border: 0; border-top: 1px solid #e5e7eb; margin: 12px 0; }
+        .ghi-chu { color: #6b7280; font-size: 11px; line-height: 1.5; }
+
+        .hdt-tu-bam { border-radius: 7px; padding: 8px 10px; font-size: 11.5px;
+                      border: 1px solid #e5e7eb; background: #f9fafb; }
+        .hdt-tu-bam.bat { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+        .hdt-tu-bam label { display: flex; gap: 6px; align-items: flex-start; cursor: pointer;
+                            color: inherit; font-size: 11.5px; margin: 0; }
+        .hdt-tu-bam input { width: auto; }
+        .hdt-chi-duong { border: 1px solid #e5e7eb; background: #f9fafb;
+                         border-radius: 7px; padding: 9px 11px; font-size: 11.5px; }
+        #tomTatKho { font-weight: 600; }
+
+        /* ⚠️ CHỮ BỊ ẨN, KHÔNG BỊ XÓA — popup theo yêu cầu chỉ còn các ô tích.
+           Vẫn giữ nguyên chữ trong tệp vì hai lẽ:
+           1. popup.js vẫn ghi trạng thái vào #ctTrangThai, #tomTatKho… như cũ,
+              nên KHÔNG phải sửa một dòng logic nào. Sửa logic để đổi giao diện
+              là cách dễ làm hỏng công tắc hóa đơn thật nhất.
+           2. Muốn xem lại đầy đủ chỉ cần bỏ đúng dòng dưới đây. */
+        .hdt-chu-dai { display: none !important; }
+
+        /* Nhãn ngắn — thứ DUY NHẤT còn chữ. Không có nó thì bốn ô trông y hệt
+           nhau, mà ô đầu là phát hành hóa đơn thuế THẬT, không hoàn tác được. */
+        .hdt-nhan-ngan { white-space: nowrap; }
+        .hdt-tu-bam, .hdt-chi-duong { padding: 7px 9px; }
+        .hdt-tu-bam + h2, h2 + .hdt-chi-duong { margin-top: 0; }
+        .hdt-chi-duong { margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <h1 class="hdt-chu-dai">Hóa đơn điện tử Tendoo</h1>
+    <div class="phien-ban hdt-chu-dai" id="phienBan"></div>
+
+    <div class="khung hdt-chu-dai">
+        <b>Công tắc tự bấm Thanh toán: MẶC ĐỊNH TẮT.</b> Khi tắt, máy chỉ ghép tiền
+        và bỏ hàng vào giỏ cho bạn kiểm tra — <b>không bấm Thanh toán, không tạo
+        hóa đơn nào</b>. Bật công tắc phải tick thêm ô xác nhận, làm trên bảng nổi
+        ở trang bán hàng Tendoo.
+    </div>
+
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">1. Thuật toán ghép tiền</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">2. Cột trong bongtom.store, nối sang Tendoo</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">3. Khai báo tài khoản + chốt chặn</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">4. Đọc sản phẩm thật, bỏ vào giỏ</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">5. Tự bấm Thanh toán — công tắc, mặc định TẮT</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">6. Tự mở tab Tendoo, xong tự đóng</span></div>
+    <div class="buoc hdt-chu-dai"><span class="dau xong">✔</span><span class="xong">7. Khai báo tài khoản ngay trong trang bongtom.store</span></div>
+
+    <hr class="hdt-chu-dai">
+    <h2 class="hdt-chu-dai">Tự bấm Thanh toán</h2>
+    <div id="congTacTuBam" class="hdt-tu-bam">
+        <label><input type="checkbox" id="ctTuBam">
+            <span class="hdt-nhan-ngan">Tự bấm Thanh toán</span>
+            <span class="hdt-chu-dai">Tự bấm Thanh toán sau khi bỏ hàng vào giỏ</span></label>
+        <div id="ctLopHai" style="display:none">
+            <label style="margin-top:6px"><input type="checkbox" id="ctDaHieu">
+                <span class="hdt-nhan-ngan">Hóa đơn THẬT</span>
+                <span class="hdt-chu-dai">Tôi hiểu đây là hóa đơn THẬT, đẩy lên cơ quan thuế, không hoàn tác được</span></label>
+        </div>
+        <div class="hdt-phu hdt-chu-dai" id="ctTrangThai" style="margin-top:6px"></div>
+        <div id="ctBoQuaThueKhoi" style="margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb">
+            <label><input type="checkbox" id="ctBoQuaThue">
+                <span class="hdt-nhan-ngan">Bỏ cảnh báo thuế</span>
+                <span class="hdt-chu-dai">Bỏ qua cảnh báo <b>"Chưa thiết lập quản lý thuế"</b></span></label>
+            <div class="hdt-phu hdt-chu-dai" id="ctBoQuaThueTrangThai" style="margin-top:6px"></div>
+        </div>
+    </div>
+
+    <h2 class="hdt-chu-dai">Dọn giỏ hàng</h2>
+    <div class="hdt-chi-duong">
+        <div class="hdt-phu hdt-chu-dai" style="margin-bottom:6px">
+            Giỏ còn sót do lần chạy hỏng thì máy <b>tự dọn</b> — nhưng chỉ khi đối
+            chiếu được đúng là giỏ do chính máy bỏ vào. Hàng bạn tự chọn thì máy
+            không đụng vào.
+        </div>
+        <label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer">
+            <input type="checkbox" id="ctXoaGioLa" style="width:auto">
+            <span class="hdt-nhan-ngan">Xóa giỏ lạ</span>
+            <span class="hdt-chu-dai">Tự xóa giỏ <b>kể cả khi không phải giỏ của máy</b></span>
+        </label>
+        <div class="hdt-phu hdt-chu-dai" id="ctXoaGioTrangThai" style="margin-top:6px"></div>
+    </div>
+
+    <hr class="hdt-chu-dai">
+    <h2 class="hdt-chu-dai">Tài khoản Tendoo của khách</h2>
+    <div class="hdt-chi-duong hdt-chu-dai" id="chiDuong">
+        <div id="tomTatKho">Đang đọc…</div>
+        <div class="hdt-dan" style="margin:6px 0 0">
+            Khai báo tài khoản và mã cửa hàng nay nằm <b>ngay trong trang báo cáo
+            khách hàng của bongtom.store</b> — bấm nút 🔑 cạnh nút "Tạo HĐ" của đúng khách đó.
+            <b>Không còn khóa mở</b>: khai báo xong là chạy được ngay, không phải gõ lại
+            sau khi mở Chrome hay tải lại extension.
+        </div>
+    </div>
+
+    <hr class="hdt-chu-dai">
+    <div class="ghi-chu hdt-chu-dai">
+        Quyền hiện có: <code>storage</code>, <code>tabs</code> (để tìm tab Tendoo
+        đang mở), <code>alarms</code> (để hẹn giờ tự chạy — Chrome đóng là không
+        chạy gì cả), trang báo cáo của bongtom.store, và 3 tên miền Tendoo
+        (<code>seller-v3</code>, <code>id-v3</code>, <code>apiv3</code>).
+        Mật khẩu chỉ nằm trên máy này — KHÔNG còn khóa mở, nên ai mở được hồ sơ Chrome trên máy này là đọc được.
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

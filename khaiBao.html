@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <title>Khai báo tài khoản Tendoo</title>
+    <!--
+      TRANG NÀY ĐƯỢC NHÚNG VÀO TRANG BÁO CÁO CỦA SELL BẰNG IFRAME.
+
+      Nó thuộc về extension (chrome-extension://…), KHÔNG thuộc về Sell. Nhờ vậy
+      trang Sell không đọc được ô nhập, cũng không nghe được phím gõ ở đây.
+      Xem sell/oKhaiBao.js để biết vì sao ranh giới này quan trọng.
+
+      Không có đoạn script nào viết thẳng trong file (Manifest V3 cấm inline
+      script) — mọi thứ nằm ở khaiBaoTrang.js.
+    -->
+    <link rel="stylesheet" href="popup/khaiBao.css">
+    <style>
+        body { font-family: system-ui, "Segoe UI", sans-serif; margin: 0; padding: 14px;
+               color: #111827; font-size: 13px; background: #fff; }
+        .dan-dau { color: #6b7280; font-size: 11.5px; line-height: 1.5;
+                   margin: 0 0 10px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+        .dan-dau b { color: #111827; }
+
+        /* ⚠️ CHỮ BỊ ẨN, KHÔNG BỊ XOÁ (chủ dự án yêu cầu 2026-08-15).
+           Giữ lại trong tệp vì đây là chỗ duy nhất nói ra cam kết về nơi cất
+           mật khẩu Tendoo — xoá đi là mất hẳn, sau này không ai đọc mã cũng
+           biết. Muốn hiện lại chỉ cần bỏ đúng dòng dưới. */
+        .dan-dau { display: none; }
+    </style>
+</head>
+<body>
+    <p class="dan-dau">
+        Khai báo nằm trong <b>khung riêng của extension</b>. Mật khẩu được mã hóa
+        bằng khóa mở, chỉ lưu trên máy này — <b>không gửi lên máy chủ bongtom.store</b>,
+        không vào cơ sở dữ liệu, không lên GitHub.
+    </p>
+
+    <div id="khaiBao"></div>
+
+    <script src="chung/khoMatKhau.js"></script>
+    <script src="tendoo/ghiNhanCuaHang.js"></script>
+    <script src="popup/khaiBao.js"></script>
+    <script src="khaiBaoTrang.js"></script>
+</body>
+</html>

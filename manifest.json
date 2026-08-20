@@ -1,0 +1,93 @@
+{
+  "manifest_version": 3,
+  "name": "Hoa don dien tu Tendoo - Sell",
+  "version": "2.18.0",
+  "description": "Tao hoa don dien tu tren Tendoo tu bao cao khach hang cua Sell. BAN 2.0: BO HAN KHOA MO - khai bao xong la chay duoc ngay, khong phai go lai sau khi mo Chrome hay tai lai extension. Doi lai: ai mo duoc ho so Chrome tren may nay la doc duoc mat khau Tendoo cua moi khach. Cong tac tu bam Thanh toan MAC DINH TAT - khi tat thi CHUA bam, CHUA tao hoa don nao.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://bongtom.store/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "https://seller-v3.tendoo.vn/*",
+    "https://id-v3.tendoo.vn/*",
+    "https://apiv3.tendoo.vn/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bongtom.store/bao-cao-khach-hang*",
+        "http://localhost:8000/bao-cao-khach-hang*",
+        "http://127.0.0.1:8000/bao-cao-khach-hang*"
+      ],
+      "js": [
+        "chung/nhipDo.js",
+        "chung/ghepTien.js",
+        "chung/chiaHoaDon.js",
+        "chung/caiDat.js",
+        "chung/henGio.js",
+        "chung/lichSuChay.js",
+        "sell/docBang.js",
+        "sell/epHomNay.js",
+        "sell/oKhaiBao.js",
+        "sell/chenCot.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://seller-v3.tendoo.vn/*"
+      ],
+      "js": [
+        "chung/nhipDo.js",
+        "chung/ghepTien.js",
+        "chung/chiaHoaDon.js",
+        "chung/caiDat.js",
+        "tendoo/danhTinh.js",
+        "tendoo/docSanPham.js",
+        "tendoo/boNoi.js",
+        "tendoo/ghiNhanCuaHang.js",
+        "chung/domReact.js",
+        "tendoo/boGio.js",
+        "tendoo/bamThanhToan.js",
+        "chung/doiTaiKhoan.js",
+        "chung/dauGio.js",
+        "tendoo/nhanLenh.js",
+        "tendoo/bangThu.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://id-v3.tendoo.vn/*"
+      ],
+      "js": [
+        "chung/nhipDo.js",
+        "tendoo/dangNhap.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Hoa don dien tu Tendoo"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "khaiBao.html"
+      ],
+      "matches": [
+        "https://bongtom.store/*",
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*"
+      ]
+    }
+  ]
+}

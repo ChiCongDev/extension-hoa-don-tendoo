@@ -47,6 +47,16 @@ const NHIP_DO = {
     // ── Hạn chịu đựng ───────────────────────────────────────────────────────
     HAN_CHO_BANG: 8000,           // bảng "Xác nhận thanh toán" phải hiện
     HAN_CHO_GIO_TRONG: 8000,      // sau khi bấm "Xác nhận", giỏ phải trống đi
+    // Chờ THÊM chừng này NẾU nút "Xác nhận" còn đang quay vòng chờ. Phát hành
+    // hóa đơn điện tử là gọi lên hệ thống thuế, chậm hơn mọi thao tác khác —
+    // bỏ cuộc lúc Tendoo còn đang làm là treo lệnh oan. Còn quay thì còn chờ,
+    // ngừng quay là kết luận ngay, nên hạn này gần như không bao giờ dùng hết.
+    HAN_CHO_TENDOO_QUAY: 30000,
+    // Sau khi bỏ hàng vào giỏ, chân trang là một mảnh giao diện KHÁC — React
+    // cập nhật chậm hơn giỏ một nhịp. Chờ nút Thanh toán mở khóa. Ca chưa mở
+    // thì chờ bao lâu cũng vô ích, nên hạn này để ngắn: đủ qua khe vẽ lại,
+    // không đủ để ngồi không khi bệnh nằm chỗ khác.
+    HAN_CHO_NUT_MO_KHOA: 4000,
     HAN_CHO_BANG_THUE_DONG: 4000, // sau khi bấm "Bỏ qua", bảng thuế phải đóng
     HAN_CHO_O_DANG_NHAP: 8000,    // form đăng nhập phải gắn xong
     HAN_CHO_DONG_GIO: 4000,       // món vừa bấm phải hiện trong giỏ

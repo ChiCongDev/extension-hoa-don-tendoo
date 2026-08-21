@@ -60,6 +60,9 @@ function gan(goc, phuThuoc) {
     let baoOk = '';
     let caiDatSell = null;   // { sellUrl, sellToken } — nơi gửi kết quả sang Sell
     let soChoGui = 0;        // số dòng chưa gửi được sang Sell
+    let caiDatTg = null;     // { telegramDaCoToken, telegramChatId } — báo Telegram
+    let baoTg = null;        // kết quả thao tác Telegram gần nhất, vẽ ngay tại khối
+    let lanBaoTg = null;     // lần báo tự động gần nhất (để lộ ra lỗi im lặng)
     let baoSell = null;      // { chu, loi } — báo NGAY TRONG khối gửi sang Sell
 
     const tao = (the, lop, chu) => {
@@ -635,6 +638,172 @@ function gan(goc, phuThuoc) {
         if (oUrl) oUrl.value = c.sellUrl || '';
     }
 
+    // ── BÁO VỀ TELEGRAM ────────────────────────────────────────────────────
+    //
+    // Chủ dự án chốt 2026-08-20: BOT RIÊNG, chat riêng, chỉ báo thành công.
+    //
+    // ⚠️ RỦI RO LỚN NHẤT CỦA TÍNH NĂNG NÀY LÀ HỎNG TRONG IM LẶNG: sai token hay
+    // sai chat id thì người dùng không nhận được gì mà cũng không biết vì sao,
+    // và cứ tưởng hóa đơn chưa ra. Nên khối này BẮT BUỘC phải có ba thứ: nút
+    // gửi thử, dòng trạng thái lần báo gần nhất, và nút dò chat id.
+    function veBaoTelegram() {
+        if (!guiNen) return;
+        const c = caiDatTg || { telegramDaCoToken: false, telegramChatId: '' };
+        const daDu = c.telegramDaCoToken && c.telegramChatId;
+
+        const khoi = tao('div', 'hdt-sao-luu');
+        khoi.id = 'kbTelegram';
+        khoi.appendChild(tao('div', 'hdt-nhan', 'Báo về Telegram khi xuất hóa đơn xong'));
+        khoi.appendChild(tao('div', 'hdt-dan',
+            'Mỗi khi một khách xuất hóa đơn xong, máy nhắn cho bạn tên khách, số tiền, '
+            + 'ngày số liệu và giờ xuất. CHỈ báo khi hóa đơn ĐÃ RA THẬT — bỏ vào giỏ mà '
+            + 'chưa bấm thì không báo.'));
+        khoi.appendChild(tao('div', 'hdt-dan',
+            'Cần một bot RIÊNG: mở @BotFather trên Telegram, gõ /newbot, lấy token. '
+            + 'Rồi NHẮN CHO BOT một câu bất kỳ (bot không nhắn trước cho người lạ được) '
+            + 'và bấm "Dò chat id".'));
+
+        const tt = tao('div', 'hdt-dan');
+        tt.id = 'kbTgTrangThai';
+        if (daDu) {
+            tt.textContent = `✓ Đã nối — token đã lưu · chat id ${c.telegramChatId}.`;
+        } else if (!c.telegramDaCoToken && !c.telegramChatId) {
+            tt.textContent = 'Chưa bật — để trống thì máy không nhắn gì cả.';
+        } else {
+            tt.textContent = c.telegramDaCoToken
+                ? '⚠ Đã có token nhưng CHƯA CÓ CHAT ID — chưa nhắn được.'
+                : '⚠ Đã có chat id nhưng CHƯA CÓ TOKEN — chưa nhắn được.';
+            tt.style.color = '#b45309';
+        }
+        khoi.appendChild(tt);
+
+        // ⚠️ LẦN BÁO TỰ ĐỘNG GẦN NHẤT. Đây là thứ duy nhất lộ ra được lỗi im
+        // lặng: gửi thử thành công không có nghĩa là đường tự động đang chạy.
+        if (lanBaoTg) {
+            const l = tao('div', 'hdt-dan');
+            l.id = 'kbTgLanCuoi';
+            if (Number(lanBaoTg.hong) > 0) {
+                l.textContent = '✗ Lần báo gần nhất HỎNG: '
+                    + (lanBaoTg.thongBao || lanBaoTg.ma || 'không rõ');
+                l.style.color = '#b91c1c';
+                l.style.fontWeight = '600';
+            } else if (Number(lanBaoTg.daGui) > 0) {
+                l.textContent = `✓ Lần báo gần nhất: đã nhắn ${lanBaoTg.daGui} tin.`;
+                l.style.color = '#15803d';
+            }
+            khoi.appendChild(l);
+        }
+
+        khoi.appendChild(oNhap('kbTgToken', 'Token bot Telegram', 'password',
+            c.telegramDaCoToken ? '(đã lưu — gõ để đổi)' : 'Dán token từ @BotFather'));
+        khoi.appendChild(oNhap('kbTgChatId', 'Chat id', 'text',
+            'Bấm "Dò chat id" là máy tự điền'));
+
+        const hang = tao('div', 'hdt-cong-cu');
+        const nutLuu = tao('button', 'hdt-chinh', 'Lưu');
+        nutLuu.id = 'kbTgLuu';
+        nutLuu.onclick = () => luuTelegram();
+        hang.appendChild(nutLuu);
+
+        const nutDo = tao('button', null, 'Dò chat id');
+        nutDo.id = 'kbTgDoChatId';
+        nutDo.onclick = () => doChatId();
+        hang.appendChild(nutDo);
+
+        const nutThu = tao('button', null, 'Gửi thử');
+        nutThu.id = 'kbTgGuiThu';
+        nutThu.onclick = () => guiThuTelegram();
+        hang.appendChild(nutThu);
+
+        // ⚠️ Cùng lý do với nút "Gỡ token" của khối Sell: ô token là loại
+        // password nên bấm Lưu với ô trống thì GIỮ NGUYÊN cái cũ. Không có nút
+        // này thì token đã lưu là vĩnh viễn, không đường nào tắt.
+        if (c.telegramDaCoToken || c.telegramChatId) {
+            const nutTat = tao('button', null, 'Tắt báo Telegram');
+            nutTat.id = 'kbTgTat';
+            nutTat.onclick = () => tatTelegram();
+            hang.appendChild(nutTat);
+        }
+        khoi.appendChild(hang);
+
+        const bao = tao('div', 'hdt-dan');
+        bao.id = 'kbTgBao';
+        if (baoTg) {
+            bao.textContent = baoTg.chu;
+            bao.style.color = baoTg.loi ? '#b91c1c' : '#15803d';
+            bao.style.fontWeight = '600';
+        }
+        khoi.appendChild(bao);
+        goc.appendChild(khoi);
+
+        const oChat = layO('kbTgChatId');
+        if (oChat) oChat.value = c.telegramChatId || '';
+    }
+
+    async function luuTelegram() {
+        const tin = { loai: 'hdt-dat-cai-dat', telegramChatId: layGiaTri('kbTgChatId') };
+        // Ô token TRỐNG -> giữ nguyên token cũ, không xoá mất.
+        const tk = layGiaTri('kbTgToken');
+        if (String(tk || '').trim() !== '') tin.telegramToken = tk;
+
+        const tra = await guiNen(tin);
+        if (tra && tra.ok) {
+            caiDatTg = { telegramDaCoToken: !!tra.telegramDaCoToken,
+                         telegramChatId: tra.telegramChatId || '' };
+            baoTg = caiDatTg.telegramDaCoToken && caiDatTg.telegramChatId
+                ? { chu: '✓ Đã lưu. Bấm "Gửi thử" để chắc chắn nhắn được.', loi: false }
+                : { chu: caiDatTg.telegramDaCoToken
+                        ? '⚠ Đã lưu token nhưng CHƯA CÓ CHAT ID.'
+                        : '⚠ Đã lưu chat id nhưng CHƯA CÓ TOKEN.', loi: true };
+        } else {
+            baoTg = { chu: '✗ Không lưu được.', loi: true };
+        }
+        return veLai();
+    }
+
+    async function tatTelegram() {
+        const tra = await guiNen({ loai: 'hdt-dat-cai-dat', xoaTelegram: true });
+        if (tra && tra.ok) {
+            caiDatTg = { telegramDaCoToken: false, telegramChatId: '' };
+            baoTg = { chu: '✓ Đã tắt — máy không nhắn Telegram nữa.', loi: false };
+        } else {
+            baoTg = { chu: '✗ Không tắt được.', loi: true };
+        }
+        return veLai();
+    }
+
+    async function doChatId() {
+        baoTg = { chu: 'Đang dò…', loi: false };
+        veLai();
+        const kq = await guiNen({ loai: 'hdt-telegram-do-chat-id' });
+        if (kq && kq.ok && kq.chatId) {
+            const o = layO('kbTgChatId');
+            if (o) o.value = kq.chatId;
+            baoTg = { chu: `✓ Thấy chat id ${kq.chatId}${kq.ten ? ' (' + kq.ten + ')' : ''}. `
+                + 'Bấm Lưu để dùng.', loi: false };
+            // Điền lại SAU khi vẽ, vì veLai() dựng lại cả màn hình.
+            const chatMoi = kq.chatId;
+            veLai();
+            const o2 = layO('kbTgChatId');
+            if (o2) o2.value = chatMoi;
+            return goc;
+        }
+        baoTg = { chu: '✗ Không dò được: '
+            + ((kq && (kq.thongBao || kq.ma)) || 'không rõ'), loi: true };
+        return veLai();
+    }
+
+    async function guiThuTelegram() {
+        baoTg = { chu: 'Đang gửi…', loi: false };
+        veLai();
+        const kq = await guiNen({ loai: 'hdt-telegram-gui-thu' });
+        baoTg = kq && kq.ok
+            ? { chu: '✓ Đã gửi — mở Telegram xem có tin chưa.', loi: false }
+            : { chu: '✗ Chưa gửi được: '
+                + ((kq && (kq.thongBao || kq.ma)) || 'không rõ'), loi: true };
+        return veLai();
+    }
+
     /**
      * Thử kết nối: gửi một gói RỖNG rồi báo thẳng máy chủ trả lời thế nào.
      *
@@ -727,7 +896,8 @@ function gan(goc, phuThuoc) {
         goc.textContent = '';                  // xóa sạch màn hình cũ
         veThongBao();
         if (kho && Kho.laKhoCu(kho)) veKhoCu();
-        else { veCuaHangVuaThay(); veDanhSach(); veFormThem(); veSaoLuu(); veGuiSell(); }
+        else { veCuaHangVuaThay(); veDanhSach(); veFormThem(); veSaoLuu(); veGuiSell();
+               veBaoTelegram(); }
         return goc;
     }
 
@@ -740,7 +910,19 @@ function gan(goc, phuThuoc) {
                 const c = await guiNen({ loai: 'hdt-hoi-cai-dat' });
                 caiDatSell = { sellUrl: (c && c.sellUrl) || '',
                                sellToken: (c && c.sellToken) || '' };
-            } catch (e) { caiDatSell = { sellUrl: '', sellToken: '' }; }
+                // ⚠️ Nền KHÔNG trả token Telegram (xem cheTokenTelegram trong
+                // background.js) — chỉ trả cờ "đã có". Đủ dùng: ô token là loại
+                // password, không bao giờ vẽ lại giá trị cũ.
+                caiDatTg = { telegramDaCoToken: !!(c && c.telegramDaCoToken),
+                             telegramChatId: (c && c.telegramChatId) || '' };
+            } catch (e) {
+                caiDatSell = { sellUrl: '', sellToken: '' };
+                caiDatTg = { telegramDaCoToken: false, telegramChatId: '' };
+            }
+            try {
+                const t = await guiNen({ loai: 'hdt-telegram-trang-thai' });
+                lanBaoTg = (t && t.ketQua) || null;
+            } catch (e) { lanBaoTg = null; }
             try {
                 const n = await guiNen({ loai: 'hdt-so-cho-gui-sell' });
                 soChoGui = (n && Number(n.soCho)) || 0;

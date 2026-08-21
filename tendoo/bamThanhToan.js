@@ -69,6 +69,7 @@ const MA = {
     TONG_KHONG_KHOP: 'TONG_KHONG_KHOP',
     KHONG_THAY_NUT: 'KHONG_THAY_NUT',
     NUT_BI_KHOA: 'NUT_BI_KHOA',
+    CA_CHUA_MO: 'CA_CHUA_MO',
     DA_BAM_ROI: 'DA_BAM_ROI',
     KHONG_HIEN_BANG: 'KHONG_HIEN_BANG',
     BANG_SAI_TONG: 'BANG_SAI_TONG',
@@ -132,6 +133,37 @@ const CAC_CHU_DONG_THONG_BAO = [
 // lên. Gài lỗi xoá sạch danh sách cấm ấy đi thì KHÔNG bài test nào đỏ: so chữ
 // tuyệt đối đã loại hết rồi, cấm thêm chẳng chặn được gì mà chỉ làm người đọc
 // tưởng có hai lớp bảo vệ. Đã bỏ. Một lớp CHẶT hơn hai lớp lỏng.
+
+// ── CA BÁN HÀNG CHƯA MỞ ─────────────────────────────────────────────────────
+//
+// Phần mềm bán hàng thường KHÓA nút Thanh toán khi ca chưa mở. Lúc ấy chờ bao
+// lâu cũng vô ích — nút sẽ khóa cho tới khi có người bấm "Mở ca".
+//
+// Gặp thật 21/08/2026: hai lượt liền báo «Nút Thanh toán đang bị khóa», mất
+// trọn 12.000.000đ (ki?n) và 9.612.236đ (hoa), không ra tờ nào. Câu ấy chẳng
+// chỉ đường đi đâu, trong khi cách chữa chỉ là một cú bấm.
+//
+// ⛔ MÁY KHÔNG TỰ BẤM "Mở ca". Mở ca là hành vi nghiệp vụ có hệ quả trên sổ
+// sách của chủ cửa hàng — không phải thứ một con máy tự quyết thay.
+const CHU_MO_CA = /^m[ởo]\s*ca$/i;
+const CHU_DONG_CA = /^[đd][óo]ng\s*ca$/i;
+
+/**
+ * Trang có nút "Mở ca" đang hiện không — dấu hiệu ca ĐANG ĐÓNG.
+ *
+ * ⚠️ SO CHỮ TUYỆT ĐỐI, và loại luôn "Đóng ca". Dò kiểu "chứa chữ mở ca" thì
+ * một nút "Đóng ca" hay một dòng hướng dẫn cũng khớp, và máy sẽ báo sai bệnh —
+ * đẩy người dùng đi mở một cái ca đang mở sẵn.
+ */
+function timNutMoCa(tailieu) {
+    const D = boDo();
+    try {
+        return [...tailieu.querySelectorAll('button, [role=button], a')]
+            .filter(b => !(b.closest && b.closest('.ant-modal, [role=dialog], .ant-drawer')))
+            .find(b => { const t = D.gonChu(b); return CHU_MO_CA.test(t) && !CHU_DONG_CA.test(t); })
+            || null;
+    } catch (e) { return null; }
+}
 
 const CHU_NUT_XAC_NHAN = 'Xác nhận';
 const CHU_NUT_BO_QUA = 'Bỏ qua';
@@ -297,6 +329,80 @@ function keLaiManHinh(tailieu) {
             + (tong == null ? ', không đọc được tổng'
                             : ', tổng ' + Number(tong).toLocaleString('vi-VN') + 'đ'));
     } catch (e) { phan.push('không đọc được giỏ'); }
+    return phan.join('; ');
+}
+
+/**
+ * Phần tử này có CÒN NẰM TRONG TRANG không.
+ *
+ * ⚠️ ĐÂY LÀ CHỐT CHẶN QUAN TRỌNG NHẤT CỦA CẢ BẢN VÁ NÀY. Bấm vào một nút đã bị
+ * React tháo khỏi trang thì sự kiện KHÔNG tới được React: không lỗi, không
+ * cảnh báo, im lặng tuyệt đối. Bảng vẫn mở, giỏ vẫn nguyên — nhìn y hệt như
+ * Tendoo đang xử lý chậm.
+ *
+ * Gặp thật 20/08/2026, khách "hoa", tờ thứ 5/6: bấm "Xác nhận" xong 8 giây
+ * không có gì xảy ra, và chủ dự án kiểm Tendoo thì chỉ có 4 tờ.
+ */
+function conTrongTrang(tailieu, e) {
+    try { return !!(e && tailieu && tailieu.contains && tailieu.contains(e)); }
+    catch (x) { return false; }
+}
+
+/** Nút đang quay vòng chờ — dấu hiệu Tendoo ĐANG LÀM, chưa phải đã xong. */
+function dangQuay(e) {
+    if (!e) return false;
+    const lop = String((e.className && e.className.baseVal) || e.className || '');
+    if (/(^|\s)(ant-btn-loading|is-loading|loading)(\s|$)/.test(lop)) return true;
+    if (e.getAttribute && (e.getAttribute('aria-busy') === 'true'
+        || e.getAttribute('data-loading') === 'true')) return true;
+    try { return !!e.querySelector('.ant-btn-loading-icon, .anticon-loading, .ant-spin'); }
+    catch (x) { return false; }
+}
+
+/**
+ * KỂ RUỘT BẢNG XÁC NHẬN — không chỉ "bảng vẫn đang mở".
+ *
+ * ⚠️ Bản hôm 20/08 kể được CÁI VỎ mà chưa kể được RUỘT: nó nói "bảng xác nhận
+ * VẪN đang mở" nhưng không nói nút có đang quay không, có dòng lỗi đỏ nào
+ * không. Mà đúng ba thứ đó mới phân biệt được "Tendoo đang xử lý" với "Tendoo
+ * đã từ chối" — hai chuyện dẫn tới hai kết luận NGƯỢC NHAU về việc tiền đã ra
+ * hay chưa.
+ */
+function keRuotBang(bang) {
+    const phan = [];
+    try {
+        const D = boDo();
+        const nut = [...bang.querySelectorAll('button, [role=button]')]
+            .map(b => {
+                const t = D.gonChu(b);
+                if (!t) return '';
+                const co = [];
+                if (b.disabled) co.push('khóa');
+                if (dangQuay(b)) co.push('ĐANG QUAY');
+                return '«' + t + '»' + (co.length ? '(' + co.join(',') + ')' : '');
+            })
+            .filter(Boolean).slice(0, 8);
+        if (nut.length) phan.push('nút trong bảng: ' + nut.join(' / '));
+    } catch (e) { /* kể được gì hay nấy */ }
+    try {
+        const D = boDo();
+        const loi = [...bang.querySelectorAll(
+            '.ant-form-item-explain-error, .ant-alert-message, .ant-alert-description, [role=alert]')]
+            .map(e => D.gonChu(e)).filter(Boolean).slice(0, 3);
+        if (loi.length) phan.push('bảng báo lỗi: ' + loi.map(x => '«' + x + '»').join(' / '));
+    } catch (e) { /* kể được gì hay nấy */ }
+    try {
+        const t = docTongTrongBang(bang);
+        if (t != null) phan.push('tổng trong bảng ' + Number(t).toLocaleString('vi-VN') + 'đ');
+    } catch (e) { /* kể được gì hay nấy */ }
+    try {
+        const g = kiemGhiNo(bang);
+        phan.push('Ghi nợ ' + (g.bat ? 'ĐANG BẬT' : 'tắt'));
+    } catch (e) { /* kể được gì hay nấy */ }
+    try {
+        const o = timODaDua(bang);
+        if (o) phan.push('ô "Khách đã đưa" đang là "' + String(o.value) + '"');
+    } catch (e) { /* kể được gì hay nấy */ }
     return phan.join('; ');
 }
 
@@ -503,14 +609,59 @@ function taoLuot() {
         }
 
         // ── ĐK 4: nút phải có và không bị khóa ──────────────────────────────
-        const nut = timNutThanhToan(tailieu);
+        //
+        // ⚠️ CA HỎNG THẬT 21/08/2026, hai lượt liền: «Nút Thanh toán đang bị
+        // khóa», mất trọn 12.000.000đ và 9.612.236đ, không ra tờ nào.
+        //
+        // ⚠️ ĐÂY TỪNG LÀ CHỐT DUY NHẤT TRONG TỆP KHÔNG CÓ MỘT GIÂY KIÊN NHẪN
+        // NÀO: nhìn `disabled` đúng một cái rồi hỏng cả khách. Mà ngay trước
+        // đó boVaoGio() vừa kiểm chứng tổng giỏ khớp tuyệt đối rồi trả về,
+        // KHÔNG nghỉ một nhịp — giỏ đã đúng, nhưng CHÂN TRANG là một mảnh giao
+        // diện khác, React cập nhật chậm hơn một nhịp là chốt này bắn oan.
+        //
+        // Chờ ở đây KHÔNG bấm gì, nên an toàn tuyệt đối. Nút mở khóa là đi ngay,
+        // không tốn giây nào khi trang đã sẵn.
+        // ⚠️ NHỊP RIÊNG, KHÔNG DÙNG BIẾN `nhip` CHUNG CỦA HÀM NÀY. Nó khai báo
+        // mãi phía dưới (sau cú bấm), nên dùng ở đây là VÙNG CHẾT THỜI GIAN —
+        // ném ReferenceError đúng vào khoảnh khắc bệnh xảy ra, tức là đúng lúc
+        // cần nó nhất. Đã dính thật lúc viết bản vá này, và bài test bắt được.
+        const nhipKhoa = tuyChon.nhipChoMs || NhipDo.NHIN_DOM;
+        const hanKhoa = tuyChon.hanChoNutMo == null
+            ? NhipDo.HAN_CHO_NUT_MO_KHOA : tuyChon.hanChoNutMo;
+        let nut = timNutThanhToan(tailieu);
+        if (nut && nut.disabled) {
+            for (let da = 0; da <= hanKhoa; da += nhipKhoa) {
+                nut = timNutThanhToan(tailieu) || nut;
+                if (!nut.disabled) break;
+                if (da + nhipKhoa > hanKhoa) break;
+                await nghi(nhipKhoa);
+            }
+        }
         if (!nut) {
             return { ok: false, ma: MA.KHONG_THAY_NUT,
                      thongBao: 'Không thấy nút Thanh toán — giao diện Tendoo có thể đã đổi.' };
         }
         if (nut.disabled) {
-            return { ok: false, ma: MA.NUT_BI_KHOA,
-                     thongBao: 'Nút Thanh toán đang bị khóa.' };
+            // ⚠️ NÓI ĐÚNG BỆNH. "Nút đang bị khóa" không chỉ đường đi đâu cả,
+            // trong khi cách chữa hay gặp nhất chỉ là một cú bấm "Mở ca".
+            const moCa = timNutMoCa(tailieu);
+            if (moCa) {
+                return {
+                    ok: false, ma: MA.CA_CHUA_MO,
+                    thongBao: 'CA BÁN HÀNG CHƯA MỞ — trang Tendoo đang hiện nút "Mở ca", và '
+                        + 'Tendoo khóa nút Thanh toán cho tới khi ca được mở. Hãy vào Tendoo '
+                        + 'bằng đúng tài khoản này, bấm "Mở ca", rồi cho chạy lại. '
+                        + '(Máy KHÔNG tự bấm Mở ca — đó là việc có hệ quả trên sổ sách của bạn.) '
+                        + 'CHƯA phát hành hóa đơn nào.',
+                };
+            }
+            return {
+                ok: false, ma: MA.NUT_BI_KHOA,
+                thongBao: 'Nút Thanh toán vẫn bị khóa sau ' + chuThoiGian(hanKhoa)
+                    + '. Máy nhìn thấy: nút ghi «' + boDo().gonChu(nut) + '»; '
+                    + 'KHÔNG thấy nút "Mở ca" nên ca có vẻ đang mở; ' + keLaiManHinh(tailieu)
+                    + '. CHƯA phát hành hóa đơn nào.',
+            };
         }
 
         // ── BƯỚC 1: mở bảng xác nhận. Cú bấm này KHÔNG phát hành gì. ────────
@@ -842,32 +993,92 @@ function taoLuot() {
             };
         }
 
-        const nutXacNhan = timNutTheoChu(bang, CHU_NUT_XAC_NHAN);
+        // ⚠️ TÌM LẠI BẢNG TỪ TRANG SỐNG, ngay trước khi bấm.
+        //
+        // Biến `bang` được lấy từ trước bước điền "Khách đã đưa" — mà chính chú
+        // thích ở bước ấy đã ghi "Bảng vừa vẽ lại". React vẽ lại thì cái tham
+        // chiếu cũ có thể trỏ vào một bảng ĐÃ BỊ THÁO KHỎI TRANG, và nút tìm
+        // trong đó là nút của một bảng không còn tồn tại. Bấm vào nó thì sự
+        // kiện không tới được React: im lặng tuyệt đối.
+        const bangSong = timBangXacNhan(tailieu) || bang;
+        const nutXacNhan = timNutTheoChu(bangSong, CHU_NUT_XAC_NHAN);
         if (!nutXacNhan) {
-            huyBang(bang);
+            huyBang(bangSong);
             return {
                 ok: false, ma: MA.KHONG_THAY_NUT_XAC_NHAN,
                 thongBao: 'Không thấy nút "Xác nhận" trong bảng — CHƯA phát hành gì.',
             };
         }
         if (nutXacNhan.disabled) {
-            huyBang(bang);
+            huyBang(bangSong);
             return { ok: false, ma: MA.NUT_BI_KHOA,
                      thongBao: 'Nút "Xác nhận" đang bị khóa — CHƯA phát hành gì.' };
+        }
+        // ⛔ THÀ DỪNG CÒN HƠN BẤM VÀO KHOẢNG KHÔNG. Bấm vào nút đã rời khỏi
+        // trang thì không có gì xảy ra, và máy sẽ ngồi đợi 8 giây rồi báo
+        // "KHÔNG RÕ" — treo lệnh, bắt người đi kiểm tận mắt, trong khi CHẮC
+        // CHẮN chưa phát hành gì. Ở đây nói thẳng được thì đừng để "không rõ".
+        if (!conTrongTrang(tailieu, nutXacNhan)) {
+            return {
+                ok: false, ma: MA.KHONG_THAY_NUT_XAC_NHAN,
+                thongBao: 'Nút "Xác nhận" tìm được nhưng KHÔNG còn nằm trong trang — bảng đã '
+                    + 'bị vẽ lại. Bấm vào đó thì không có gì xảy ra cả. Máy dừng, CHƯA phát '
+                    + 'hành gì.',
+            };
         }
 
         // ── BƯỚC 2: ĐÂY MỚI LÀ CÚ BẤM PHÁT HÀNH THẬT. ───────────────────────
         // Từ dòng này trở xuống, mọi kết quả xấu đều là "không rõ" chứ không
         // còn là lỗi thường — vì hóa đơn có thể đã lên cơ quan thuế rồi.
+        //
+        // ⚠️ ĐẶT MỘT CÁI CHUÔNG — TRÊN TÀI LIỆU, KHÔNG PHẢI TRÊN NÚT.
+        //
+        // Ngày 20/08/2026 khách "hoa" hỏng mà ba khả năng nhìn từ ngoài giống
+        // hệt nhau: cú bấm không tới được ai / Tendoo nhận rồi từ chối im lặng
+        // / Tendoo đang xử lý chậm. Chuông tách khả năng đầu ra khỏi hai khả
+        // năng sau, chỉ bằng một câu trong log.
+        //
+        // ⚠️ VÌ SAO PHẢI GẮN TRÊN TÀI LIỆU. Bản đầu tôi gắn chuông thẳng lên
+        // nút — VÔ DỤNG: `nut.click()` luôn gọi người nghe gắn trên chính nút
+        // đó, kể cả khi nút đã bị tháo khỏi trang. Chuông kêu 100% số lần, đo
+        // đúng một thứ: rằng .click() có chạy. Gài lỗi "chuông luôn báo kêu"
+        // thì không bài test nào đỏ — nó chưa từng đo được gì.
+        //
+        // React KHÔNG gắn người nghe lên từng nút; nó gắn một cái duy nhất ở
+        // GỐC TÀI LIỆU rồi phân phát xuống. Nên "sự kiện có nổi tới tài liệu
+        // không" mới đúng là "React có nhìn thấy cú bấm này không". Nút rời
+        // trang, hoặc có ai đó chặn đường nổi lên, thì chuông im.
+        //
+        // ⛔ Chuông chỉ NGHE. Không bấm gì, không đổi gì, gỡ ra ngay sau đó —
+        // không có cách nào sinh ra hóa đơn trùng.
+        let chuongKeu = false;
+        const nghePhat = (su) => { if (su.target === nutXacNhan) chuongKeu = true; };
+        try { tailieu.addEventListener('click', nghePhat); } catch (e) { /* kệ */ }
         nutXacNhan.click();
+        try { tailieu.removeEventListener('click', nghePhat); } catch (e) { /* kệ */ }
         // NHÌN giỏ cho tới khi trống, thay vì ngủ cứng 3 giây. Thường trống sau
         // ~0,3 giây. ⛔ KHÔNG nới chốt nào: vẫn phải THẤY giỏ trống mới coi là
         // XONG; hết hạn mà giỏ còn hàng thì vẫn là KHÔNG RÕ và treo lệnh lại.
         const hanGio = tuyChon.doiSauBam == null
             ? NhipDo.HAN_CHO_GIO_TRONG : tuyChon.doiSauBam;
-        for (let da = 0; da <= hanGio; da += nhip) {
+        // ⚠️ CHỜ THEO TÍN HIỆU, KHÔNG THEO ĐỒNG HỒ. Phát hành hóa đơn điện tử
+        // là gọi lên hệ thống thuế — chậm hơn mọi thao tác khác. Nút còn quay
+        // nghĩa là Tendoo ĐANG LÀM, bỏ cuộc lúc ấy là treo lệnh oan. Ngược lại,
+        // ngừng quay mà giỏ vẫn còn hàng thì kết luận ngay, không phí giây nào.
+        //
+        // ⛔ KHÔNG NỚI CHỐT NÀO: vẫn phải THẤY GIỎ TRỐNG mới coi là XONG, và
+        // tuyệt đối KHÔNG bấm "Xác nhận" lần thứ hai dù chờ bao lâu.
+        const hanQuay = tuyChon.hanChoQuay == null
+            ? NhipDo.HAN_CHO_TENDOO_QUAY : tuyChon.hanChoQuay;
+        let daCho = 0;
+        for (; daCho <= hanGio; daCho += nhip) {
             if (B.gioDangTrong(tailieu)) break;
-            if (da + nhip > hanGio) break;
+            if (daCho + nhip > hanGio) break;
+            await nghi(nhip);
+        }
+        for (; !B.gioDangTrong(tailieu) && daCho <= hanGio + hanQuay; daCho += nhip) {
+            if (!dangQuay(nutXacNhan)) break;      // Tendoo thôi làm -> kết luận ngay
+            if (daCho + nhip > hanGio + hanQuay) break;
             await nghi(nhip);
         }
 
@@ -882,10 +1093,20 @@ function taoLuot() {
         // vẫn cấm bấm lại. Tiền có thể đã lên cơ quan thuế rồi.
         return {
             ok: false, ma: MA.KHONG_RO, tongLucBam: mongDoi,
-            thongBao: 'Đã bấm "Xác nhận" nhưng giỏ vẫn còn hàng sau ' + chuThoiGian(hanGio)
-                + ' — KHÔNG RÕ hóa đơn đã phát hành hay chưa. Máy nhìn thấy: '
-                + keLaiManHinh(tailieu) + '. Hãy mở Tendoo kiểm tra tận mắt. '
-                + 'KHÔNG được bấm lại.',
+            chuongKeu,
+            thongBao: 'Đã bấm "Xác nhận" nhưng giỏ vẫn còn hàng sau ' + chuThoiGian(daCho)
+                + ' — KHÔNG RÕ hóa đơn đã phát hành hay chưa. '
+                // ⚠️ CÂU QUYẾT ĐỊNH. Chuông không kêu = cú bấm không tới được
+                // nút = CHẮC CHẮN chưa phát hành gì. Chuông kêu = Tendoo đã
+                // nhận và từ chối (hoặc đang làm) — bệnh nằm chỗ khác hẳn.
+                + (chuongKeu
+                    ? 'Cú bấm ĐÃ NỔI TỚI TRANG (React có nhìn thấy — Tendoo nhận rồi mà '
+                      + 'không làm gì). '
+                    : '⚠ Cú bấm KHÔNG NỔI TỚI TRANG — React không hề nhìn thấy nó, '
+                      + 'gần như chắc chắn CHƯA phát hành gì. ')
+                + 'Máy nhìn thấy: ' + keLaiManHinh(tailieu)
+                + (bangSong ? '. Trong bảng: ' + keRuotBang(bangSong) : '')
+                + '. Hãy mở Tendoo kiểm tra tận mắt. KHÔNG được bấm lại.',
         };
     }
 
@@ -899,6 +1120,7 @@ function taoLuot() {
 
 const API = { taoLuot, timNutThanhToan, timBangXacNhan, timBangChanDuong, timNutTheoChu,
               timNutDongThongBao, tenCacNut, docDuongDan, keLaiManHinh, chuThoiGian,
+              conTrongTrang, dangQuay, keRuotBang, timNutMoCa,
               docTongTrongBang, ghiNoDangBat, kiemGhiNo, timODaDua, dienKhachDaDua,
               dangHien, MA, HAN_CHO_BANG_MS };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

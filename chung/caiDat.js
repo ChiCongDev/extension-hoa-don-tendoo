@@ -36,6 +36,11 @@ const MAC_DINH = {
     // không đẩy — người dùng có thể cố ý không dùng trang kế toán.
     sellUrl: '',
     sellToken: '',
+    // Báo về Telegram mỗi khi xuất hóa đơn xong. BOT RIÊNG, chat riêng — chủ dự
+    // án chốt 2026-08-20. Để trống BẤT KỲ ô nào = TẮT hẳn tính năng, y như
+    // sellUrl/sellToken ngay trên.
+    telegramToken: '',
+    telegramChatId: '',
 };
 
 /**
@@ -116,6 +121,18 @@ function gop(cu, tin, HenGio) {
     // Bỏ dấu / thừa ở cuối để khỏi ra "…//api/…" khi ghép đường dẫn.
     if ('sellUrl' in t) c.sellUrl = String(t.sellUrl || '').trim().replace(/\/+$/, '');
     if ('sellToken' in t) c.sellToken = String(t.sellToken || '').trim();
+    // ⚠️ CHỈ GHI ĐÈ KHI CÓ CHỮ. Màn khai báo KHÔNG BAO GIỜ vẽ lại bí mật đã lưu
+    // (xem popup/khaiBao.js), nên ô trống nghĩa là "giữ nguyên cái cũ" chứ
+    // không phải "xóa đi". Nhận cả chuỗi rỗng ở đây là mỗi lần người dùng bấm
+    // Lưu vì việc khác lại âm thầm xóa mất token — tính năng tắt mà không ai hay.
+    if ('telegramToken' in t && String(t.telegramToken || '').trim()) {
+        c.telegramToken = String(t.telegramToken).trim();
+    }
+    if ('telegramChatId' in t && String(t.telegramChatId || '').trim()) {
+        c.telegramChatId = String(t.telegramChatId).trim();
+    }
+    // Muốn TẮT thì phải nói thẳng, không nhập nhằng với ô để trống.
+    if (t.xoaTelegram === true) { c.telegramToken = ''; c.telegramChatId = ''; }
 
     if ('henGio' in t) {
         const h = t.henGio || {};
@@ -158,6 +175,8 @@ function tuKho(o, docDuoc) {
     c.daHieu = !!(c.tuBam && c.daHieu);
     c.sellUrl = String(c.sellUrl || '').trim().replace(/\/+$/, '');
     c.sellToken = String(c.sellToken || '').trim();
+    c.telegramToken = String(c.telegramToken || '').trim();
+    c.telegramChatId = String(c.telegramChatId || '').trim();
     c.docDuoc = docDuoc !== false;
     return c;
 }

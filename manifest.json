@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hoa don dien tu Tendoo - Sell",
-  "version": "2.18.0",
+  "version": "2.19.0",
   "description": "Tao hoa don dien tu tren Tendoo tu bao cao khach hang cua Sell. BAN 2.0: BO HAN KHOA MO - khai bao xong la chay duoc ngay, khong phai go lai sau khi mo Chrome hay tai lai extension. Doi lai: ai mo duoc ho so Chrome tren may nay la doc duoc mat khau Tendoo cua moi khach. Cong tac tu bam Thanh toan MAC DINH TAT - khi tat thi CHUA bam, CHUA tao hoa don nao.",
   "permissions": [
     "storage",
@@ -14,7 +14,8 @@
     "http://127.0.0.1:8000/*",
     "https://seller-v3.tendoo.vn/*",
     "https://id-v3.tendoo.vn/*",
-    "https://apiv3.tendoo.vn/*"
+    "https://apiv3.tendoo.vn/*",
+    "https://api.telegram.org/*"
   ],
   "content_scripts": [
     {

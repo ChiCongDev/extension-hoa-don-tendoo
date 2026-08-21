@@ -1,0 +1,355 @@
+'use strict';
+
+// ============================================================================
+//  BÁO VỀ TELEGRAM MỖI KHI XUẤT HÓA ĐƠN THÀNH CÔNG.
+//
+//  Chủ dự án chốt 2026-08-20: BOT RIÊNG (không dùng chung với project
+//  bot-telegram) · CHAT RIÊNG · CHỈ BÁO THÀNH CÔNG.
+//
+//  ── VIỆC PHỤ, KHÔNG BAO GIỜ ĐƯỢC LÀM HỎNG LƯỢT CHẠY ────────────────────────
+//  Telegram sập, mất mạng, sai token — hóa đơn vẫn phải ra bình thường. Mọi
+//  hàm ở đây nuốt lỗi và trả về mã lý do, KHÔNG ném ra ngoài.
+//
+//  ── VÌ SAO GỬI CHỮ TRƠN, KHÔNG MARKDOWN ────────────────────────────────────
+//  Tên khách có dấu _ * [ ` là Markdown vỡ, mà lỗi kiểu đó chỉ lộ ra đúng lúc
+//  gặp khách có tên ấy — tức là lúc không ai ngồi xem. Chữ trơn thì không có
+//  gì để vỡ, và cũng không phải viết hàm thoát ký tự nào.
+//
+//  ── CHỐNG BÁO TRÙNG ────────────────────────────────────────────────────────
+//  Mã gửi sang Sell chạy HAI đường cho cùng một khách: gửi ngay sau mỗi khách,
+//  và gửi lại toàn bộ ở cuối loạt làm lưới an toàn. Sell chịu được vì nó chống
+//  trùng bằng `ma_lenh`. TELEGRAM THÌ KHÔNG — móc vào một cách ngây thơ là mỗi
+//  hóa đơn nhận hai tin, và tin trùng dễ làm người đọc tưởng hóa đơn xuất hai
+//  lần. Nên phải có sổ "đã báo" riêng.
+//
+//  ⚠️ ĐÁNH DẤU TRƯỚC KHI GỬI, GỬI HỎNG THÌ GỠ DẤU RA. Đúng kỷ luật "đánh dấu
+//  TRƯỚC khi bấm" của nhanLenh.js. Hai lối kia đều tệ hơn:
+//    · gửi xong mới đánh dấu -> service worker chết giữa chừng là BÁO TRÙNG
+//    · đánh dấu trước mà không gỡ -> mạng chập một cái là MẤT TIN vĩnh viễn
+//  Gỡ dấu xong thì lượt gửi lại ở cuối loạt tự thử lần nữa — được một lần thử
+//  lại miễn phí mà không phải dựng hàng chờ mới.
+//
+//  ⚠️ CHỖ HỞ CÒN LẠI, GHI RA CHO RÕ: Chrome giết service worker ĐÚNG LÚC đang
+//  gửi thì dấu vẫn nằm đó và tin mất luôn. Chọn mất tin hơn là báo trùng.
+// ============================================================================
+
+(function () {
+
+const KHOA_SO_DA_BAO = 'hdt-telegram-da-bao';
+const KHOA_TRANG_THAI = 'hdt-telegram-trang-thai';
+
+/** Giữ tối đa bấy nhiêu bản ghi trong sổ, và bỏ mọi thứ cũ hơn bấy nhiêu ngày. */
+const GIOI_HAN_SO = 300;
+const NGAY_GIU = 7;
+const MOT_NGAY = 24 * 60 * 60 * 1000;
+
+const MUI_GIO = 'Asia/Ho_Chi_Minh';
+const RA_HOA_DON = 'RA_HOA_DON';
+
+const chuoi = (v) => String(v == null ? '' : v).trim();
+
+/**
+ * Giờ Việt Nam, ÉP CỨNG múi giờ.
+ *
+ * ⚠️ KHÔNG dùng giờ máy. Máy chạy lúc không có ai ngồi xem; máy đặt sai múi giờ
+ * hay đang ở nơi khác thì tin nhắn ghi sai giờ, mà đó lại đúng là thứ chủ dự án
+ * yêu cầu phải rõ ("phải ghi rõ ngày và giờ ra").
+ */
+function chuGio(luc) {
+    const t = new Date(Number(luc) || Date.now());
+    if (Number.isNaN(t.getTime())) return '';
+    try {
+        const p = new Intl.DateTimeFormat('en-GB', {
+            timeZone: MUI_GIO, year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        }).formatToParts(t).reduce((o, x) => (o[x.type] = x.value, o), {});
+        return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+/** "2026-08-19" -> "19/08/2026". Không đúng dạng thì trả nguyên si. */
+function chuNgay(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(chuoi(iso));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : chuoi(iso);
+}
+
+const chuTien = (n) => Number(n).toLocaleString('vi-VN');
+
+/** Phần NGÀY trong chuỗi giờ "21/08/2026 08:53:27" -> "21/08/2026". */
+const ngayTrongGio = (gio) => String(gio || '').slice(0, 10);
+
+/**
+ * Dòng này có đáng báo không.
+ *
+ * ⛔ CHỈ 'RA_HOA_DON'. 'VAO_GIO' là công tắc tự bấm đang tắt — hàng mới nằm
+ * trong giỏ, CHƯA có hóa đơn nào. Báo nhầm cái đó là nói dối trắng trợn.
+ * Số tiền phải > 0: 'RA_HOA_DON' mà 0đ thì không có gì để khoe.
+ */
+function nenBao(dong) {
+    const d = dong || {};
+    return chuoi(d.ket_qua) === RA_HOA_DON
+        && Number(d.so_tien) > 0
+        && chuoi(d.ma_khach_hang) !== ''
+        && chuoi(d.ma_lenh) !== '';
+}
+
+/**
+ * Soạn tin. CHỮ TRƠN — không Markdown, không HTML, không phải thoát gì.
+ *
+ * ⚠️ `ly_do` chỉ có chữ khi hóa đơn ra DỞ DANG (ra 2/3 tờ rồi dừng). Phải nói
+ * ra, nếu không tin nhắn trông y hệt thành công trọn vẹn trong khi tiền còn
+ * thiếu — người đọc yên tâm nhầm rồi không bao giờ kiểm lại.
+ */
+function soanTin(dong) {
+    const d = dong || {};
+    const ten = chuoi(d.ten_khach_hang);
+    const ma = chuoi(d.ma_khach_hang);
+    const dong1 = ten && ma ? `${ten} (${ma})` : (ten || ma);
+
+    const cac = [
+        '✅ Đã xuất hóa đơn',
+        `Khách hàng: ${dong1}`,
+        `Số tiền: ${chuTien(d.so_tien)}đ`,
+    ];
+    // ── NGÀY SỐ LIỆU: CHỈ HIỆN KHI NÓ KHÁC NGÀY XUẤT ───────────────────────
+    //
+    // Chủ dự án chốt 2026-08-21: tin nhắn đang lặp ngày hai lần.
+    //
+    //     Số liệu ngày: 21/08/2026
+    //     Lúc: 21/08/2026 08:53:27
+    //
+    // Hai dòng ấy gần như LUÔN trùng nhau, vì epHomNay.js ép bảng báo cáo về
+    // đúng "hôm nay" rồi mới đọc (và còn kiểm chứng lại). Chạy tay thì cũng
+    // lấy ngày của máy lúc chạy. Nên bỏ đi KHÔNG mất thông tin gì: ngày vẫn
+    // nằm nguyên trong dòng "Lúc".
+    //
+    // ⚠️ NHƯNG CÓ ĐÚNG MỘT CẢNH CHÚNG KHÁC NHAU: loạt chạy VẮT QUA NỬA ĐÊM.
+    // Đọc báo cáo lúc 23:58 ngày 21 thì số liệu là của ngày 21, nhưng tờ thứ
+    // năm mãi 00:03 mới ra — "Lúc" ghi ngày 22. Bỏ hẳn dòng này thì tin nhắn
+    // nói hóa đơn ra ngày 22 trong khi tiền là doanh thu ngày 21, và KHÔNG có
+    // gì báo cho người đọc biết.
+    //
+    // Nên: giống thì bỏ, khác thì giữ. Ngắn ở mọi lượt bình thường, mà không
+    // im lặng đúng lúc cần lên tiếng.
+    //
+    // Đọc không ra giờ (`gio` rỗng) cũng coi là KHÁC -> vẫn hiện ngày, vì lúc
+    // ấy không còn dòng nào mang ngày nữa.
+    const gio = chuGio(d.chay_luc);
+    const ngay = chuNgay(d.ngay);
+    if (ngay && ngay !== ngayTrongGio(gio)) cac.push(`Số liệu ngày: ${ngay}`);
+    if (gio) cac.push(`Lúc: ${gio}`);
+
+    const lyDo = chuoi(d.ly_do);
+    if (lyDo) cac.push(`⚠ ${lyDo}`);
+    return cac.join('\n');
+}
+
+// ── SỔ "ĐÃ BÁO" ─────────────────────────────────────────────────────────────
+
+/** Bỏ bản ghi quá cũ và cắt bớt cho khỏi phình. Sổ này chạy mãi không ai dọn. */
+function donSo(ds, bayGio) {
+    const nay = Number(bayGio) || Date.now();
+    const con = (Array.isArray(ds) ? ds : [])
+        .filter(x => x && chuoi(x.ma) && nay - (Number(x.luc) || 0) < NGAY_GIU * MOT_NGAY);
+    return con.slice(-GIOI_HAN_SO);
+}
+
+/**
+ * GIÀNH CHỖ để báo một dòng: chưa ai báo thì ghi dấu và trả true.
+ *
+ * Ghi dấu NGAY, trước khi gửi — xem chú thích đầu tệp.
+ */
+async function gianhCho(kho, ma, luc) {
+    if (!kho || !chuoi(ma)) return false;
+    let ds;
+    try { ds = await kho.doc(); } catch (e) { return false; }
+    const con = donSo(ds, luc);
+    if (con.some(x => chuoi(x.ma) === chuoi(ma))) return false;   // đã báo rồi
+    con.push({ ma: chuoi(ma), luc: Number(luc) || Date.now() });
+    try { await kho.ghi(donSo(con, luc)); } catch (e) { return false; }
+    return true;
+}
+
+/** Trả chỗ đã giành, để lượt gửi sau thử lại. Dùng khi gửi HỎNG. */
+async function traCho(kho, ma) {
+    if (!kho || !chuoi(ma)) return;
+    try {
+        const ds = await kho.doc();
+        const con = (Array.isArray(ds) ? ds : []).filter(x => chuoi(x && x.ma) !== chuoi(ma));
+        await kho.ghi(con);
+    } catch (e) { /* mất chỗ trả cũng chỉ là mất một lần thử lại */ }
+}
+
+// ── GỬI ─────────────────────────────────────────────────────────────────────
+
+const goc = (token) => 'https://api.telegram.org/bot' + encodeURIComponent(token);
+
+/**
+ * Gửi MỘT tin. Không ném lỗi bao giờ.
+ *
+ * @returns {Promise<{ok:boolean, ma?:string, thongBao?:string}>}
+ */
+async function guiTin(caiDat, chu, layFetch) {
+    const c = caiDat || {};
+    const token = chuoi(c.telegramToken);
+    const chat = chuoi(c.telegramChatId);
+    // Chưa khai thì THÔI, không phải lỗi: người dùng có thể cố ý không dùng.
+    if (!token || !chat) return { ok: false, ma: 'CHUA_KHAI_BAO' };
+    if (!chuoi(chu)) return { ok: false, ma: 'KHONG_CO_NOI_DUNG' };
+
+    const fetchDung = layFetch || (typeof fetch !== 'undefined' ? fetch : null);
+    if (!fetchDung) return { ok: false, ma: 'KHONG_CO_FETCH' };
+
+    try {
+        const tra = await fetchDung(goc(token) + '/sendMessage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // ⛔ KHÔNG parse_mode. Xem chú thích đầu tệp.
+            body: JSON.stringify({
+                chat_id: chat, text: String(chu), disable_web_page_preview: true,
+            }),
+        });
+        return await docTraLoi(tra);
+    } catch (e) {
+        return { ok: false, ma: 'KHONG_GOI_DUOC',
+                 thongBao: 'Không gọi được Telegram (mất mạng?): '
+                           + chuoi((e && e.message) || e) };
+    }
+}
+
+/**
+ * Đọc trả lời của Telegram và DỊCH RA TIẾNG NGƯỜI.
+ *
+ * ⚠️ "Telegram trả về 401" thì không ai đoán ra phải làm gì. Cùng bài học với
+ * lỗi 403 của bongtom.store trong dayVeSell.js — nói thẳng phải sửa ở đâu.
+ */
+async function docTraLoi(tra) {
+    if (!tra) return { ok: false, ma: 'KHONG_CO_TRA_LOI' };
+    let than = null;
+    try { than = await tra.json(); } catch (e) { than = null; }
+    if (tra.ok && than && than.ok) return { ok: true, than };
+
+    const maSo = Number(tra.status) || (than && Number(than.error_code)) || 0;
+    const moTa = chuoi(than && than.description);
+    if (maSo === 401) {
+        return { ok: false, ma: 'SAI_TOKEN',
+                 thongBao: 'Telegram TỪ CHỐI TOKEN. Mở @BotFather, lấy lại token của bot '
+                           + 'rồi khai lại ở đây.' };
+    }
+    if (maSo === 400 && /chat not found/i.test(moTa)) {
+        return { ok: false, ma: 'SAI_CHAT_ID',
+                 thongBao: 'Telegram không tìm thấy đoạn chat này. Hãy NHẮN CHO BOT một câu '
+                           + 'bất kỳ trước (bot không nhắn trước cho người lạ được), rồi bấm '
+                           + '"Dò chat id".' };
+    }
+    if (maSo === 403) {
+        return { ok: false, ma: 'BOT_BI_CHAN',
+                 thongBao: 'Bot đang bị chặn hoặc bạn chưa bắt đầu đoạn chat. Mở Telegram, '
+                           + 'nhắn cho bot một câu rồi thử lại.' };
+    }
+    return { ok: false, ma: 'TELEGRAM_TU_CHOI',
+             thongBao: 'Telegram từ chối' + (maSo ? ` (mã ${maSo})` : '')
+                       + (moTa ? `: ${moTa}` : '') };
+}
+
+/** Gửi thử — để người dùng biết ngay token và chat id có đúng không. */
+function guiThu(caiDat, layFetch, luc) {
+    return guiTin(caiDat,
+        'Chào! Extension hóa đơn Tendoo đã nối được với Telegram.\n'
+        + 'Từ giờ mỗi khi xuất hóa đơn xong, tin sẽ về đây.\n'
+        + 'Lúc gửi thử: ' + chuGio(luc), layFetch);
+}
+
+/**
+ * DÒ CHAT ID từ tin nhắn người dùng vừa gửi cho bot.
+ *
+ * Người dùng không có cách nào tự biết chat id của mình. Bắt họ đi tìm ở một
+ * bot lạ nào đó là đẩy bí mật sang tay bên thứ ba — dò bằng chính bot của mình
+ * thì không phải nhờ ai.
+ */
+async function doChatId(caiDat, layFetch) {
+    const token = chuoi((caiDat || {}).telegramToken);
+    if (!token) return { ok: false, ma: 'CHUA_CO_TOKEN',
+                         thongBao: 'Khai token của bot trước đã.' };
+    const fetchDung = layFetch || (typeof fetch !== 'undefined' ? fetch : null);
+    if (!fetchDung) return { ok: false, ma: 'KHONG_CO_FETCH' };
+
+    let tra;
+    try {
+        tra = await fetchDung(goc(token) + '/getUpdates', { method: 'GET' });
+    } catch (e) {
+        return { ok: false, ma: 'KHONG_GOI_DUOC',
+                 thongBao: 'Không gọi được Telegram (mất mạng?).' };
+    }
+    const kq = await docTraLoi(tra);
+    if (!kq.ok) return kq;
+
+    // Lấy đoạn chat RIÊNG gần nhất. Nhóm thì bỏ qua: chủ dự án chốt chat riêng.
+    const tin = ((kq.than && kq.than.result) || [])
+        .map(u => (u && (u.message || u.edited_message)) || null)
+        .filter(m => m && m.chat && chuoi(m.chat.type) === 'private');
+    if (!tin.length) {
+        return { ok: false, ma: 'CHUA_CO_TIN',
+                 thongBao: 'Chưa thấy tin nhắn nào. Mở Telegram, NHẮN CHO BOT một câu bất kỳ '
+                           + 'rồi bấm lại nút này.' };
+    }
+    const cuoi = tin[tin.length - 1];
+    return { ok: true, chatId: String(cuoi.chat.id),
+             ten: chuoi(cuoi.chat.username || cuoi.chat.first_name) };
+}
+
+// ── ĐƯỜNG CHÍNH: BÁO CHO MỘT MẺ DÒNG ───────────────────────────────────────
+
+/**
+ * Lọc, chống trùng, rồi gửi.
+ *
+ * ⛔ KHÔNG BAO GIỜ NÉM. Hàm này chạy cạnh luồng phát hành hóa đơn; ném ra là
+ * kéo theo cả thứ quan trọng hơn nó rất nhiều.
+ *
+ * @returns {Promise<{daGui:number, boQua:number, hong:number, ma?:string}>}
+ */
+async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
+    const kq = { daGui: 0, boQua: 0, hong: 0 };
+    try {
+        const c = caiDat || {};
+        if (!chuoi(c.telegramToken) || !chuoi(c.telegramChatId)) {
+            return { ...kq, ma: 'CHUA_KHAI_BAO' };
+        }
+        const ds = (Array.isArray(cacDong) ? cacDong : [cacDong]).filter(Boolean);
+        const nay = Number(luc) || Date.now();
+
+        for (const dong of ds) {
+            if (!nenBao(dong)) { kq.boQua++; continue; }
+            const ma = chuoi(dong.ma_lenh);
+            if (!(await gianhCho(kho, ma, nay))) { kq.boQua++; continue; }
+
+            const gui = await guiTin(c, soanTin(dong), layFetch);
+            if (gui.ok) {
+                kq.daGui++;
+            } else {
+                // Trả chỗ để lượt gửi lại ở cuối loạt còn thử được lần nữa.
+                await traCho(kho, ma);
+                kq.hong++;
+                kq.ma = gui.ma;
+                kq.thongBao = gui.thongBao;
+            }
+        }
+    } catch (e) {
+        kq.hong++;
+        kq.ma = 'NGOAI_LE';
+        kq.thongBao = chuoi((e && e.message) || e);
+    }
+    return kq;
+}
+
+const API = {
+    baoCacDong, soanTin, nenBao, chuGio, chuNgay, ngayTrongGio, donSo,
+    gianhCho, traCho, guiTin, guiThu, doChatId, docTraLoi,
+    KHOA_SO_DA_BAO, KHOA_TRANG_THAI, GIOI_HAN_SO, NGAY_GIU, MUI_GIO,
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = API;
+if (typeof globalThis !== 'undefined') globalThis.HDT_BaoTelegram = API;
+
+})();

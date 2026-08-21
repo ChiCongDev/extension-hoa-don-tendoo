@@ -41,6 +41,8 @@ const MA = {
     OK: 'OK',
     GIO_KHONG_TRONG: 'GIO_KHONG_TRONG',
     KHONG_TIM_THAY_HANG: 'KHONG_TIM_THAY_HANG',
+    GO_KHONG_VAO_O_TIM: 'GO_KHONG_VAO_O_TIM',
+    GOI_Y_KHONG_KHOP_CHU_GO: 'GOI_Y_KHONG_KHOP_CHU_GO',
     KHONG_PHAN_BIET_DUOC: 'KHONG_PHAN_BIET_DUOC',
     KHONG_DAT_DUOC_SO_LUONG: 'KHONG_DAT_DUOC_SO_LUONG',
     KHONG_VAO_GIO: 'KHONG_VAO_GIO',
@@ -212,6 +214,54 @@ function coGiaTrongChu(chu, gia) {
     for (const dau of ['\\.', ',']) {
         const mau = nhom.split('#').join(dau);
         if (new RegExp('(?<![\\d.,])' + mau + '(?![\\d.,]*\\d)').test(String(chu))) return true;
+    }
+    return false;
+}
+
+/**
+ * Khối chữ này có chứa ĐÚNG mã hàng `ma` không.
+ *
+ * ⚠️ VÌ SAO CẦN. Máy vốn khớp mặt hàng bằng TÊN — mà tên thì nó phải TỰ CẮT ra
+ * từ chữ trên màn hình (lấy phần đứng trước mã hàng, rồi gỡ đơn vị ở đuôi).
+ * Phép cắt ấy phụ thuộc mã hàng đúng mẫu "SP + số" và đơn vị nằm trong một
+ * danh sách sáu từ. Lệch một chút là tên sai, và máy báo "không có mặt hàng
+ * nào tên đó" trong khi mặt hàng nằm ngay trước mặt.
+ *
+ * Trong khi đó máy ĐÃ CÓ SẴN mã hàng chính xác từ API Tendoo (product_code),
+ * mang theo suốt từ lúc lập kế hoạch — mà không dùng. Mã là ĐỊNH DANH, tên thì
+ * không: hai mặt hàng trùng tên là chuyện thường, trùng mã thì không.
+ *
+ * ⚠️ CHẶN HAI ĐẦU. Không chặn thì "SP008" khớp nhầm vào "SP0089" — đó là nới
+ * lỏng chốt chặn chứ không phải sửa lỗi. Ký tự liền trước và liền sau đều
+ * không được là chữ hay số.
+ */
+function coMaTrongChu(chu, ma) {
+    const m = String(ma == null ? '' : ma).trim();
+    if (!m || !chu) return false;
+    const thoat = m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(?<![\\p{L}\\p{N}])' + thoat + '(?![\\p{L}\\p{N}])', 'u')
+        .test(String(chu));
+}
+
+/**
+ * Khối này có Ô NÀO chứa ĐÚNG mã hàng `ma` và không gì khác không.
+ *
+ * ⚠️ VÌ SAO CẦN CẢ HÀM NÀY chứ không chỉ coMaTrongChu(). Đối chiếu trên khối
+ * chữ gộp phải chặn hai đầu để "SP002" khỏi khớp nhầm vào "SP0020". Nhưng khi
+ * chữ các ô DÍNH LIỀN nhau — cảnh đã biết rõ, xem chú thích docGiaTuLa() ở
+ * đầu tệp — thì chuỗi thành "…nữCặpSP0020990.000…", ký tự trước mã là chữ và
+ * sau mã là số, nên chặn hai đầu KHÔNG CHO QUA cả mã đúng.
+ *
+ * Đọc từ ĐÚNG Ô của mã thì không dính được với gì cả, và so BẰNG NHAU TUYỆT
+ * ĐỐI thì cũng không có chuyện khớp một phần. Chặt hơn, mà lại đúng nhiều
+ * cảnh hơn.
+ */
+function coOMaRieng(khoi, ma) {
+    const m = String(ma == null ? '' : ma).trim();
+    if (!m || !khoi || !khoi.querySelectorAll) return false;
+    const D = boDo();
+    for (const e of [khoi, ...khoi.querySelectorAll('*')]) {
+        if (D.gonChu(e) === m) return true;
     }
     return false;
 }
@@ -498,12 +548,62 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
         // ── Tìm đúng món ────────────────────────────────────────────────────
         const nhipNhin = tuyChon.nhipNhin || NhipDo.NHIN_DOM;
         const hanNhin = tuyChon.doiVeLuoi == null ? NhipDo.HAN_CHO_DONG_GIO : tuyChon.doiVeLuoi;
+        // ── GÕ TÌM KIẾM, RỒI ĐỌC LẤY KẾT QUẢ CỦA CHÍNH MÌNH ─────────────────
+        //
+        // ⚠️ CA HỎNG THẬT 20/08/2026, khách "ti?n", tờ thứ 5/6. Máy báo «Máy
+        // thấy 1 mặt hàng nhưng không mặt hàng nào tên "Giày vải thấp cổ
+        // unisex"» — trong khi mặt hàng ấy nằm ngay đó, mã SP0089, giá đúng
+        // 1.000.000, tồn 12, đơn vị "chiếc". Chủ dự án chụp màn hình chứng minh.
+        //
+        // Lưới có hai chục thẻ, mà máy chỉ "thấy 1 mặt hàng" -> nó đang đọc
+        // BẢNG GỢI Ý CÒN SÓT của lần tìm TRƯỚC, chưa kịp đổi theo chữ vừa gõ.
+        //
+        // ⚠️ BẢN CŨ VỨT BỎ HAI TÍN HIỆU DO CHÍNH NÓ TẠO RA:
+        //   · dienChacChan trả true/false — nó sinh ra CHÍNH VÌ React hay nuốt
+        //     chữ gõ vào, và chỗ khác trong dự án CÓ kiểm (ô "Khách đã đưa":
+        //     gõ không vào thì dừng). Riêng ô tìm kiếm thì bỏ qua.
+        //   · nhinToiKhi trả về "tên cần đã hiện ra chưa" — cũng bỏ qua.
+        // Vứt cả hai thì máy đọc thứ còn sót trên màn hình rồi ĐỔ LỖI CHO MẶT
+        // HÀNG, trong khi thứ nó cầm còn chưa phải kết quả của câu nó vừa hỏi.
+        //
+        // ⚠️ VÌ SAO GÕ LẠI Ở ĐÂY LÀ AN TOÀN — và vì sao nó khác mọi chỗ khác:
+        // gõ vào ô tìm kiếm KHÔNG bấm gì, KHÔNG bỏ gì vào giỏ, KHÔNG phát hành
+        // gì. Không có cách nào sinh ra hóa đơn trùng. Vẫn có trần cứng MỘT
+        // lần, không vòng lặp.
+        let goDuoc = true;
+        let thayTen = false;
         if (oTim) {
-            await D.dienChacChan(oTim, mon.ten, { nghi });
-            // Chờ tới khi BẢNG GỢI Ý thật sự có món này, thay vì ngủ cứng rồi đoán.
-            await nhinToiKhi(
-                () => docCacDongGoiY(tailieu).some(t => t.ten === mon.ten),
-                { nghi, hanMs: hanNhin, nhipMs: nhipNhin });
+            for (let lan = 0; lan < 2; lan++) {
+                goDuoc = await D.dienChacChan(oTim, mon.ten, { nghi });
+                if (!goDuoc) continue;                   // chữ chưa vào ô -> gõ lại
+                thayTen = !!(await nhinToiKhi(
+                    () => docCacDongGoiY(tailieu).some(t => t.ten === mon.ten),
+                    { nghi, hanMs: hanNhin, nhipMs: nhipNhin }));
+                if (thayTen) break;
+            }
+
+            if (!goDuoc) {
+                return {
+                    ok: false, ma: MA.GO_KHONG_VAO_O_TIM,
+                    thongBao: `Gõ "${mon.ten}" vào ô tìm kiếm của Tendoo KHÔNG ĂN (đã thử `
+                        + 'hai lượt). Máy dừng để khỏi đọc nhầm danh sách còn sót của lần tìm '
+                        + 'trước. CHƯA phát hành hóa đơn nào.',
+                };
+            }
+
+            // ⚠️ CHỐT QUYẾT ĐỊNH: ô tìm kiếm ĐANG CHỨA GÌ ngay lúc này. Chữ
+            // trong ô không phải chữ mình vừa gõ thì danh sách gợi ý kia KHÔNG
+            // PHẢI CỦA MÌNH — và mọi kết luận về mặt hàng rút ra từ nó đều vô
+            // giá trị. Thà dừng còn hơn đổ oan cho một mặt hàng đang có sẵn.
+            if (String(oTim.value) !== String(mon.ten)) {
+                return {
+                    ok: false, ma: MA.GOI_Y_KHONG_KHOP_CHU_GO,
+                    thongBao: `Ô tìm kiếm đang chứa "${String(oTim.value)}" chứ không phải `
+                        + `"${mon.ten}" — danh sách gợi ý trên màn hình không phải kết quả `
+                        + 'của thứ máy vừa gõ, nên máy KHÔNG kết luận gì về mặt hàng. '
+                        + 'CHƯA phát hành hóa đơn nào.',
+                };
+            }
         }
 
         // Ưu tiên BẢNG GỢI Ý (thứ Tendoo thật sự hiện ra khi gõ tìm kiếm).
@@ -511,7 +611,13 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
         // được vào ô tìm kiếm.
         const cacGoiY = docCacDongGoiY(tailieu);
         const nguon = cacGoiY.length ? cacGoiY : docCacTheHang(tailieu);
-        const hopTen = nguon.filter(t => t.ten && t.ten === mon.ten);
+        // ƯU TIÊN MÃ HÀNG — định danh thật, không phải cái tên tự cắt ra.
+        // Không có mã (hàng cũ, API thiếu) hoặc không dòng nào chứa mã thì mới
+        // lùi về so tên như trước. KHÔNG nới chốt nào: khớp mã xong vẫn phải
+        // qua đúng phép kiểm giá bên dưới.
+        const hopMa = String(mon.ma || '').trim()
+            ? nguon.filter(t => coOMaRieng(t.el, mon.ma) || coMaTrongChu(t.chu, mon.ma)) : [];
+        const hopTen = hopMa.length ? hopMa : nguon.filter(t => t.ten && t.ten === mon.ten);
         // Vẫn ưu tiên khớp số đã bóc được; không khớp thì ĐỐI CHIẾU thẳng vào
         // khối chữ. Xem coGiaTrongChu() để biết vì sao — và vì sao nó KHÔNG
         // phải là nới lỏng chốt chặn.
@@ -528,13 +634,21 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
             // lời nhắc không đủ để biết nên sửa gì, phải đi lục mã mới đoán ra.
             const dangThay = nguon.length;
             const cungTen = hopTen.map(t => Number(t.gia).toLocaleString('vi-VN') + 'đ');
+            // ⚠️ KỂ RA TÊN MÁY ĐANG THẤY. Thiếu dòng này thì đọc log xong vẫn
+            // không biết máy nhìn nhầm vào đâu — đã mất trọn một ngày vì đúng
+            // chỗ thiếu này, hai lần trước cũng vậy (tên nút trên bảng lạ, màn
+            // hình lúc treo). Đây là lần thứ ba.
+            const tenDangThay = nguon.map(t => `"${t.ten}"`).slice(0, 5).join(', ')
+                + (nguon.length > 5 ? ` …và ${nguon.length - 5} nữa` : '');
             const keRa = dangThay === 0
                 ? 'Máy KHÔNG đọc được mặt hàng nào trên màn hình — nhiều khả năng Tendoo đã '
                   + 'đổi giao diện bán hàng, hoặc trang chưa vẽ xong.'
                 : cungTen.length
                     ? `Máy thấy ${dangThay} mặt hàng, trong đó có "${mon.ten}" nhưng giá là `
                       + `${cungTen.join(' / ')} — không khớp giá cần.`
-                    : `Máy thấy ${dangThay} mặt hàng nhưng không mặt hàng nào tên "${mon.ten}".`;
+                    : `Máy thấy ${dangThay} mặt hàng nhưng không cái nào là "${mon.ten}"`
+                      + (String(mon.ma || '').trim() ? ` (mã ${mon.ma})` : '')
+                      + `. Máy đang thấy: ${tenDangThay}.`;
             return {
                 ok: false, ma: MA.KHONG_TIM_THAY_HANG,
                 soThayTrenMan: dangThay,
@@ -815,7 +929,7 @@ async function xoaSachGio(tailieu, tuyChon = {}) {
     };
 }
 
-const API = { coGiaTrongChu, docGiaTuLa, docTonTuLa, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
+const API = { coGiaTrongChu, coMaTrongChu, coOMaRieng, docGiaTuLa, docTonTuLa, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
               xoaSachGio, timNutXoaDong, timNutCong, gioDangTrong, timOTimKiem,
               docTongGioChoKip, MA };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

@@ -95,6 +95,30 @@ function theHang(sp, chiSo) {
  *   - ghiNoBat           bảng mở ra với công tắc Ghi nợ đang BẬT
  *   - khongMoBang        bấm Thanh toán mà bảng không hiện (giao diện đổi)
  *   - giuGioSauXacNhan   bấm Xác nhận xong giỏ vẫn còn hàng (ca KHÔNG RÕ)
+ *   - veLaiBangXn        SAU khi điền "Khách đã đưa", React THÁO bảng xác nhận cũ ra
+ *                        và dựng lại một bảng mới y hệt. Nút của bảng cũ vẫn tìm
+ *                        được nhưng KHÔNG còn nằm trong trang — bấm vào là bấm vào
+ *                        khoảng không. Đây là nghi phạm số một của ca khách "hoa"
+ *                        ngày 20/08/2026.
+ *   - nutTtKhoa          nút Thanh toán bị KHÓA và không bao giờ mở.
+ *   - nutTtThayMoiSauMs  nút Thanh toán khóa, và sau N mili-giây React THÁO nó ra
+ *                        dựng một nút MỚI đã mở khóa. Tham chiếu cũ khóa vĩnh viễn —
+ *                        ai giữ nó thì chờ mãi cũng vô ích.
+ *   - nutTtMoSauMs      nút Thanh toán khóa lúc đầu rồi MỞ sau N mili-giây — đúng
+ *                        cảnh React vẽ lại chân trang chậm hơn giỏ một nhịp, thứ
+ *                        đã làm hai khách mất trắng ngày 21/08/2026.
+ *   - coNutMoCa          trang có nút "Mở ca" (ca bán hàng đang ĐÓNG). Tendoo khóa
+ *                        nút Thanh toán tới khi ca được mở; chờ bao lâu cũng vô ích.
+ *   - thaoBangXn         React THÁO HẲN bảng xác nhận khỏi trang sau khi điền "Khách
+ *                        đã đưa", không dựng lại. Tham chiếu cũ vẫn tìm được nút,
+ *                        nhưng nút ấy KHÔNG còn nằm trong trang.
+ *   - chanCuBamXn        có kẻ CHẶN cú bấm giữa đường (mặt nạ modal gọi
+ *                        stopPropagation) — nút vẫn trong trang, vẫn nhận cú bấm,
+ *                        nhưng sự kiện KHÔNG nổi tới tài liệu nên React không thấy.
+ *   - xacNhanQuayMs      bấm Xác nhận xong nút QUAY VÒNG CHỜ N mili-giây rồi mới
+ *                        phát hành — dựng lại cảnh hệ thống thuế trả lời chậm.
+ *   - xacNhanNuot        Tendoo NHẬN cú bấm nhưng không làm gì (từ chối im lặng).
+ *   - xacNhanBaoLoi      bảng hiện một dòng lỗi đỏ với nội dung này.
  *   - giuBangSauXacNhan  bấm Xác nhận xong bảng xác nhận VẪN đứng đó — cảnh này
  *                        khác hẳn: nó nói cú bấm chưa được Tendoo nhận
  *   - bangThue           tài khoản chưa thiết lập thuế: bấm Thanh toán thì hiện bảng
@@ -103,6 +127,23 @@ function theHang(sp, chiSo) {
  *                        máy không rơi vào vòng lặp
  *   - themGapDoi         một cú bấm thẻ hàng lại thêm HAI cái vào giỏ (tay nghe bị
  *                        gắn hai lần) — để kiểm máy bắt được hóa đơn sai tiền
+ *   - oTimNuotChu        ô tìm kiếm NUỐT chữ gõ vào (React ghi đè lại rỗng) — đúng
+ *                        cảnh mà dienChacChan() sinh ra để phát hiện.
+ *   - goiYSot            BẢNG GỢI Ý LUÔN hiện ĐÚNG MỘT DÒNG của mặt hàng có tên
+ *                        này, bất kể gõ gì — dựng lại "danh sách còn sót của lần
+ *                        tìm TRƯỚC". Đây là cảnh đã làm khách "ti?n" hỏng ngày
+ *                        20/08/2026: máy đọc danh sách sót rồi đổ lỗi cho mặt
+ *                        hàng đang nằm ngay trước mặt.
+ *   - goiYTreMs          bảng gợi ý chỉ vẽ sau N mili-giây (Tendoo hỏi máy chủ).
+ *   - oTimXoaSauMs       ô tìm kiếm bị xóa trắng sau N mili-giây kể từ lúc gõ —
+ *                        React dọn ô trong khi danh sách vẫn còn trên màn hình.
+ *                        Đặt nhỏ hơn goiYTreMs để dựng cảnh "danh sách hiện ra
+ *                        khi ô đã rỗng".
+ *   - boQuaNLanTim       N lần tìm ĐẦU TIÊN không trả kết quả gì (Tendoo hỏi máy chủ
+ *                        hụt). Dùng để kiểm máy có GÕ LẠI hay không.
+ *   - donViLa            đơn vị tính KHÔNG nằm trong danh sách sáu từ mà phép cắt
+ *                        tên biết gỡ (VD "Cặp"). Lúc ấy tên máy tự cắt ra bị thừa
+ *                        chữ đơn vị -> so tên TRƯỢT, và chỉ mã hàng cứu được.
  *   - nuotCuBamDau       N cú bấm thẻ hàng ĐẦU TIÊN bị NUỐT, không thêm gì vào giỏ.
  *                        Đây chính là cảnh đã xảy ra thật ngày 2026-08-12: máy chọn 2
  *                        món, chỉ 1 món vào giỏ, và bản cũ KHÔNG HỀ BIẾT — đi tiếp im
@@ -143,6 +184,13 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        giuGioSauXacNhan = false, giuBangSauXacNhan = false, bangThue = false,
                        khongDienSanDaDua = false, doiTongKhiDien = false,
                        thueLuonChan = false, thueKhongDong = false, nuotCuBamDau = 0,
+                       oTimNuotChu = false, goiYSot = '', oTimXoaSauMs = 0,
+                       goiYTreMs = 0, donViLa = '', boQuaNLanTim = 0,
+                       veLaiBangXn = false, thaoBangXn = false, chanCuBamXn = false,
+                       nutTtKhoa = false, nutTtMoSauMs = 0, coNutMoCa = false,
+                       nutTtThayMoiSauMs = 0,
+                       xacNhanQuayMs = 0, xacNhanNuot = false,
+                       xacNhanBaoLoi = '',
                        bangNangCap = false, nangCapLuonChan = false, nangCapDongTreMs = 0,
                        nangCapKhongNutDong = false, nangCapMatNutThanhToan = false,
                        nangCapVangNutMs = 0,
@@ -302,6 +350,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
     const chanGio = td.getElementById('chanGio');
     let conNuot = nuotCuBamDau;
     let soLanBamCong = 0;
+    const daTim = [];   // mọi chữ đã gõ vào ô tìm sản phẩm
     const daBam = { thanhToan: 0, luuDon: 0, xacNhan: 0, quayLai: 0,
                     thueBoQua: 0, thueThietLap: 0,
                     nangCapDong: 0, nangCapDoiNgay: 0 };
@@ -474,7 +523,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
           <div aria-selected="false" class="ant-select-item ant-select-item-option" data-thu-tu="${i}">
             <div class="ant-select-item-option-content">
               <div class="flex justify-between gap-2">
-                <span>${sp.ten}</span><span>chiếc</span><span>SP00${20 + i}</span>
+                <span>${sp.ten}</span><span>${donViLa || 'chiếc'}</span><span>SP00${20 + i}</span>
                 <span>${tien(sp.gia)}</span><span>Tồn: ${sp.ton}</span>
               </div>
             </div>
@@ -493,7 +542,43 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             });
         });
     }
-    td.getElementById('oTimSanPham').addEventListener('input', (su) => veGoiY(su.target.value));
+    // Nút Thanh toán bị khóa — dựng lại ca hỏng 21/08/2026.
+    if (nutTtKhoa || nutTtMoSauMs > 0) {
+        td.getElementById('nutThanhToan').disabled = true;
+        // Khóa rồi MỞ sau một nhịp: React vẽ lại chân trang chậm hơn giỏ.
+        if (nutTtMoSauMs > 0) {
+            setTimeout(() => { td.getElementById('nutThanhToan').disabled = false; },
+                       nutTtMoSauMs);
+        }
+    }
+    // Ca bán hàng đang ĐÓNG: trang hiện nút "Mở ca" ở thanh trên.
+    if (coNutMoCa) {
+        const n = td.createElement('button');
+        n.id = 'nutMoCa';
+        n.textContent = 'Mở ca';
+        td.querySelector('.thanh-tren').appendChild(n);
+    }
+
+    const oTim = td.getElementById('oTimSanPham');
+    oTim.addEventListener('input', (su) => {
+        // Ô nuốt chữ: React ghi đè lại rỗng ngay sau khi gõ. Bản giả phải dựng
+        // được cảnh này, nếu không thì chốt "gõ không vào" chẳng bao giờ chạy.
+        if (oTimNuotChu) { su.target.value = ''; return; }
+        // Danh sách CÒN SÓT: luôn một dòng cố định, không đổi theo chữ gõ.
+        if (goiYSot) { veGoiY(goiYSot); return; }
+        // Ghi lại MỌI lần tìm có chữ — để bài test đếm được máy đã gõ mấy lượt.
+        if (su.target.value) {
+            daTim.push(su.target.value);
+            if (daTim.length <= boQuaNLanTim) { veGoiY(''); return; }
+        }
+        if (oTimXoaSauMs > 0) setTimeout(() => { su.target.value = ''; }, oTimXoaSauMs);
+        if (goiYTreMs > 0) {
+            const chu = su.target.value;
+            setTimeout(() => veGoiY(chu), goiYTreMs);
+        } else {
+            veGoiY(su.target.value);
+        }
+    });
     veLuoi();
 
     // ── Bước thanh toán, đúng như trang thật ──────────────────────────
@@ -544,7 +629,9 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
     // Dựng đúng như vậy, không dựng theo tưởng tượng.
     let daBoQuaThue = false;
     let daDongNangCap = false;
-    td.getElementById('nutThanhToan').addEventListener('click', () => {
+    // Đặt tên cho việc bấm Thanh toán, để cảnh 'React thay hẳn nút' còn gắn
+    // lại được vào nút mới.
+    const bamThanhToan = () => {
         daBam.thanhToan++;                 // bấm nút này KHÔNG phát hành gì
         // Bảng nâng cấp còn hiện thì MẶT NẠ của nó nuốt cú bấm này, y như modal
         // thật. Không dựng chi tiết ấy thì "chờ bảng đóng" thành thừa trong bản
@@ -565,7 +652,24 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             return;
         }
         if (!khongMoBang && gio.length) moBangXacNhan();
-    });
+    };
+    td.getElementById('nutThanhToan').addEventListener('click', bamThanhToan);
+
+    // React THÁO nút cũ ra, dựng nút MỚI đã mở khóa. Ai còn giữ tham chiếu cũ
+    // thì chờ tới già cũng thấy nó khóa — phải ĐỌC LẠI nút mỗi vòng.
+    if (nutTtThayMoiSauMs > 0) {
+        td.getElementById('nutThanhToan').disabled = true;
+        setTimeout(() => {
+            const cu = td.getElementById('nutThanhToan');
+            if (!cu) return;
+            const moi = cu.cloneNode(true);
+            moi.disabled = false;
+            cu.removeAttribute('id');
+            cu.disabled = true;              // nút cũ khóa VĨNH VIỄN
+            cu.replaceWith(moi);
+            moi.addEventListener('click', bamThanhToan);
+        }, nutTtThayMoiSauMs);
+    }
 
     // Bảng nâng cấp: dấu × chỉ ĐÓNG bảng, y như Ant Design thật.
     td.getElementById('nangCapDong').addEventListener('click', () => {
@@ -599,6 +703,49 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
     });
 
     // Đếm xem máy có bấm bậy vào bảng thuế không.
+    // ⚠️ React VẼ LẠI BẢNG XÁC NHẬN sau khi ô "Khách đã đưa" đổi giá trị: tháo
+    // hẳn nút cũ ra khỏi trang và dựng nút mới y hệt. Nút cũ vẫn tìm được qua
+    // tham chiếu đã giữ, nhưng bấm vào nó thì KHÔNG có gì xảy ra — sự kiện
+    // không tới được ai cả. Đây là nghi phạm số một của ca khách "hoa".
+    // Tháo HẲN bảng xác nhận khỏi trang, không dựng lại: tham chiếu cũ vẫn tìm
+    // được nút, nhưng nút ấy không còn nằm trong trang nữa.
+    if (thaoBangXn) {
+        const oD = td.getElementById('xnKhachDua');
+        // Tháo SAU một nhịp, để bảng kịp cập nhật Ghi nợ theo số vừa điền —
+        // nếu tháo ngay thì máy dừng ở chốt Ghi nợ và không tới được cú bấm.
+        if (oD) oD.addEventListener('input', () => setTimeout(() => bangXn.remove(), 5), { once: true });
+    }
+    // Mặt nạ modal chặn cú bấm giữa đường: nút vẫn nhận, nhưng sự kiện không
+    // nổi tới tài liệu nên React không bao giờ thấy.
+    if (chanCuBamXn) {
+        // ⚠️ CHẶN Ở PHA NỔI BỌT, KHÔNG PHẢI PHA BẮT. Chặn ở pha bắt thì sự kiện
+        // không tới được cả chính cái nút — và chuông gắn trên nút cũng im theo,
+        // nên không phân biệt được chuông tốt với chuông vô dụng.
+        bangXn.addEventListener('click', (su) => su.stopPropagation());
+    }
+    if (veLaiBangXn) {
+        const oDua = td.getElementById('xnKhachDua');
+        if (oDua) {
+            // Vẽ lại SAU một nhịp, để bảng kịp cập nhật Ghi nợ theo số vừa điền —
+            // bản sao chụp trước lúc đó thì máy dừng ở chốt Ghi nợ, không tới cú bấm.
+            oDua.addEventListener('input', () => setTimeout(() => {
+                // ⚠️ THAY CẢ CÁI BẢNG, không chỉ thay cái nút. Thay mỗi nút thì
+                // tham chiếu bảng cũ vẫn nằm trong trang và phép tìm nút trên nó
+                // vẫn ra nút MỚI — cảnh dựng ra không đòi hỏi được gì.
+                const bangCu = td.querySelector('#bangXacNhan .ant-modal');
+                if (!bangCu) return;
+                const bangMoi = bangCu.cloneNode(true);   // bản sao KHÔNG mang người nghe
+                bangCu.replaceWith(bangMoi);
+                const moi = bangMoi.querySelector('#xnXacNhan');
+                if (moi) moi.addEventListener('click', () => {
+                    daBam.xacNhan++;
+                    if (!giuBangSauXacNhan) bangXn.style.display = 'none';
+                    if (!giuGioSauXacNhan) { gio.length = 0; veGio(); }
+                });
+            }, 5), { once: true });
+        }
+    }
+
     td.getElementById('thueBoQua').addEventListener('click', () => {
         daBam.thueBoQua++;
         daBoQuaThue = true;
@@ -620,10 +767,34 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         bangXn.style.display = 'none';     // Ant chỉ ẩn đi, KHÔNG xóa khỏi DOM
     });
 
-    td.getElementById('xnXacNhan').addEventListener('click', () => {
+    td.getElementById('xnXacNhan').addEventListener('click', (su) => {
         daBam.xacNhan++;                   // ĐÂY mới là cú phát hành thật
-        if (!giuBangSauXacNhan) bangXn.style.display = 'none';
-        if (!giuGioSauXacNhan) { gio.length = 0; veGio(); }
+
+        // Tendoo NHẬN cú bấm nhưng không làm gì — "từ chối im lặng". Khác hẳn
+        // với bấm vào khoảng không: ở đây bộ đếm CÓ tăng.
+        if (xacNhanBaoLoi) {
+            const l = td.createElement('div');
+            l.className = 'ant-form-item-explain-error';
+            l.textContent = xacNhanBaoLoi;
+            su.currentTarget.closest('.ant-modal').appendChild(l);
+        }
+        if (xacNhanNuot || xacNhanBaoLoi) return;
+
+        const xong = () => {
+            if (!giuBangSauXacNhan) bangXn.style.display = 'none';
+            if (!giuGioSauXacNhan) { gio.length = 0; veGio(); }
+        };
+        // Hệ thống thuế trả lời chậm: nút quay vòng chờ rồi mới xong.
+        if (xacNhanQuayMs > 0) {
+            const n = su.currentTarget;
+            n.className += ' ant-btn-loading';
+            setTimeout(() => {
+                n.className = String(n.className).replace(' ant-btn-loading', '');
+                xong();
+            }, xacNhanQuayMs);
+            return;
+        }
+        xong();
     });
 
     if (ghiNoBat) {
@@ -642,6 +813,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         dom, cuaSo, tailieu: td, daBam,
         xemGio: () => gio.map(d => ({ ten: d.sp.ten, gia: d.sp.gia, soLuong: d.soLuong })),
         soLanBamCong: () => soLanBamCong,
+        xemTim: () => daTim.slice(),
         tongHienTai: () => gio.reduce((t, d) => t + d.sp.gia * d.soLuong, 0),
         // Dọn giỏ TỪ BÊN NGOÀI, không qua nút xóa — để dựng đúng cảnh "giỏ tự
         // trống đi mà bảng xác nhận không hiện".

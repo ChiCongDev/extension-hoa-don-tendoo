@@ -24,6 +24,7 @@ importScripts(
     'chung/lichSuChay.js',
     'chung/dayVeSell.js',
     'chung/docBangToken.js',
+    'chung/baoTelegram.js',
 );
 
 /** Tab mình tự mở thì tự dọn. Tab người dùng đang mở thì để nguyên. */
@@ -335,6 +336,40 @@ function taoHamGui(caiDat) {
     };
 }
 
+// ── BÁO VỀ TELEGRAM ─────────────────────────────────────────────────────────
+//
+// ⚠️ VIỆC PHỤ, LUÔN NUỐT LỖI — y hệt đường đẩy sang Sell ngay dưới. Telegram
+// sập hay sai token thì hóa đơn vẫn phải ra bình thường.
+const khoDaBaoTg = () => luuTru(self.HDT_BaoTelegram.KHOA_SO_DA_BAO);
+
+/**
+ * Báo những dòng vừa sinh ra. Chống trùng nằm trong baoTelegram.js.
+ *
+ * ⚠️ CHỈ NHẬN `dongMoi`, KHÔNG nhận phần đang đọng trong hàng chờ gửi Sell.
+ * Hàng chờ ấy được gửi lại nhiều lần cho tới khi Sell nhận được; bám vào đó là
+ * mỗi lần gửi bù lại thêm một tin Telegram.
+ */
+async function baoTelegram(dongMoi) {
+    try {
+        if (!dongMoi) return null;
+        const c = await khoCaiDat.doc();
+        const kq = await self.HDT_BaoTelegram.baoCacDong({
+            cacDong: dongMoi, caiDat: c, kho: khoDaBaoTg(), luc: Date.now(),
+        });
+        // Ghi lại để màn khai báo còn nói được "lần gửi gần nhất ra sao".
+        // Hỏng trong im lặng là rủi ro lớn nhất của tính năng này: sai token thì
+        // người dùng không nhận được gì mà cũng không biết vì sao.
+        if (kq.daGui || kq.hong) {
+            await chrome.storage.local.set({
+                [self.HDT_BaoTelegram.KHOA_TRANG_THAI]: { luc: Date.now(), ...kq },
+            });
+        }
+        return kq;
+    } catch (e) {
+        return null;                       // cố ý nuốt
+    }
+}
+
 async function daySangSell(dongMoi) {
     try {
         const c = await khoCaiDat.doc();
@@ -365,6 +400,7 @@ function taoMocDaySell(ngaySoLieu) {
         try {
             const dong = self.HDT_DayVeSell.dongTuTienDo(tienDo, ngaySoLieu, Date.now());
             if (dong) daySangSell(dong);      // cố ý KHÔNG await: đừng làm chậm loạt
+            if (dong) baoTelegram(dong);      // cũng KHÔNG await, cũng nuốt lỗi
         } catch (e) { /* cố ý nuốt */ }
     };
 }
@@ -393,6 +429,14 @@ async function ghiLichSu(banGhi) {
     // chạy (bỏ qua, chưa chạy tới) — đường từng-khách không có tin cho họ.
     try {
         await daySangSell(self.HDT_DayVeSell.goiTuBanGhi(banGhi));
+    } catch (e) { /* cố ý nuốt */ }
+
+    // ⚠️ LƯỚI AN TOÀN CHO TELEGRAM, cùng lý do với dòng ngay trên. Đường
+    // báo-từng-khách có thể trượt: mạng chập đúng lúc ấy, hoặc tin tiến độ
+    // không tới. Sổ chống trùng lo phần không gửi lại cái đã gửi — và đây cũng
+    // chính là LẦN THỬ LẠI của những tin vừa hỏng (chúng đã được trả chỗ).
+    try {
+        await baoTelegram(self.HDT_DayVeSell.goiTuBanGhi(banGhi));
     } catch (e) { /* cố ý nuốt */ }
 }
 
@@ -597,6 +641,28 @@ chrome.runtime.onInstalled.addListener(() => {
     daySangSell().catch(() => {});
 });
 
+/**
+ * BỎ TOKEN TELEGRAM RA KHỎI CÂU TRẢ LỜI, chỉ để lại "đã khai hay chưa".
+ *
+ * ⚠️ `hdt-hoi-cai-dat` và `hdt-dat-cai-dat` KHÔNG chỉ phục vụ màn khai báo —
+ * bảng cài đặt bên trang bongtom.store cũng gửi đúng hai tin này, và đó là một
+ * CONTENT SCRIPT chạy trong trang web. Trả cả gói về nghĩa là token nằm trong
+ * tầm với của mã trên trang ấy.
+ *
+ * Màn khai báo không cần giá trị token: nó vốn KHÔNG BAO GIỜ vẽ lại bí mật đã
+ * lưu, chỉ cần biết "đã có" để đổi chữ gợi ý trong ô. Nên đưa ít đi không mất
+ * gì cả.
+ *
+ * (Chat id thì để nguyên: nó không phải bí mật, và màn khai báo phải hiện được
+ * cho người dùng đối chiếu.)
+ */
+function cheTokenTelegram(c) {
+    const o = { ...(c || {}) };
+    o.telegramDaCoToken = !!String(o.telegramToken || '').trim();
+    delete o.telegramToken;
+    return o;
+}
+
 chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
     if (!tin || typeof tin !== 'object') return false;
 
@@ -664,10 +730,11 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
         return true;
     }
 
+
     // Trang Sell / popup hỏi trạng thái các công tắc, độ lệch và lịch hẹn.
     if (tin.loai === 'hdt-hoi-cai-dat') {
         khoCaiDat.doc()
-            .then(traLoi)
+            .then(c => traLoi(cheTokenTelegram(c)))
             .catch(() => traLoi(self.HDT_CaiDat.khiDocHong()));
         return true;
     }
@@ -685,7 +752,7 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
                 const lich = await dungLaiBaoThuc();
                 return { ...c, lich };
             })
-            .then(c => traLoi({ ok: true, ...c }))
+            .then(c => traLoi({ ok: true, ...cheTokenTelegram(c) }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
         return true;
     }
@@ -708,6 +775,34 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
             .then(c => taoHamGui(c)([{ ngay: '', ma_khach_hang: '', so_tien: 0 }]))
             .then(kq => traLoi({ ok: !!kq.ok, ...kq }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
+        return true;
+    }
+
+    // Người dùng bấm "Gửi thử" ở màn khai báo Telegram.
+    if (tin.loai === 'hdt-telegram-gui-thu') {
+        khoCaiDat.doc()
+            .then(c => self.HDT_BaoTelegram.guiThu(c, null, Date.now()))
+            .then(kq => traLoi({ ok: !!kq.ok, ma: kq.ma, thongBao: kq.thongBao }))
+            .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
+        return true;
+    }
+
+    // Người dùng bấm "Dò chat id" sau khi đã nhắn cho bot một câu.
+    if (tin.loai === 'hdt-telegram-do-chat-id') {
+        khoCaiDat.doc()
+            .then(c => self.HDT_BaoTelegram.doChatId(c))
+            .then(kq => traLoi({ ok: !!kq.ok, chatId: kq.chatId, ten: kq.ten,
+                                 ma: kq.ma, thongBao: kq.thongBao }))
+            .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
+        return true;
+    }
+
+    // Màn khai báo hỏi lần báo Telegram gần nhất.
+    if (tin.loai === 'hdt-telegram-trang-thai') {
+        chrome.storage.local.get(self.HDT_BaoTelegram.KHOA_TRANG_THAI)
+            .then(k => traLoi({ ok: true,
+                                ketQua: k[self.HDT_BaoTelegram.KHOA_TRANG_THAI] || null }))
+            .catch(() => traLoi({ ok: false, ketQua: null }));
         return true;
     }
 

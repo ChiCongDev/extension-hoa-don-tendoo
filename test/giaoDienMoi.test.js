@@ -234,8 +234,12 @@ test('⭐ có hàng nhưng KHÔNG có tên đó → nói ra thấy bao nhiêu m�
     const r = await BoGio.boVaoGio(trang.tailieu,
         [{ ma: 'x', ten: 'Món không tồn tại trên đời', gia: 990000, soLuong: 1 }]);
     assert.strictEqual(r.ok, false);
-    assert.match(r.thongBao, /không mặt hàng nào tên/);
+    assert.match(r.thongBao, /không cái nào là "Món không tồn tại trên đời"/, r.thongBao);
     assert.ok(r.soThayTrenMan > 0);
+    // ⚠️ Từ 20/08/2026 phải KỂ RA tên đang thấy. Bản cũ chỉ nói "không mặt hàng
+    // nào tên X" — đọc log xong vẫn không biết máy nhìn nhầm vào đâu, và đúng
+    // chỗ thiếu ấy đã làm mò cả ngày với khách "ti?n".
+    assert.match(r.thongBao, /Máy đang thấy:/, r.thongBao);
 });
 
 test('mọi lời nhắc đều khẳng định CHƯA phát hành gì', async () => {

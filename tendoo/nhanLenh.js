@@ -304,7 +304,7 @@ async function xuLyMotLenh(lenh, boi) {
                 return {
                     ok: false, ma: to.ma,
                     thongBao: `Đã phát hành ${cacHoaDon.length}/${keHoach.ro.length} hóa đơn `
-                        + `(${tien(daXuat)}) rồi dừng: ${to.thongBao}${themLoiNhac}`,
+                        + `(${tien(daXuat)}) rồi dừng: ${boCauChuaRaTo(to.thongBao)}${themLoiNhac}`,
                     ketQua: gopKetQua({ cacHoaDon, daXuat, mucTieu, keHoach, lanCuoi: to.ketQua }),
                 };
             }
@@ -332,6 +332,30 @@ async function xuLyMotLenh(lenh, boi) {
 }
 
 const tien = (n) => Number(n || 0).toLocaleString('vi-VN');
+
+/**
+ * BỎ CÂU "CHƯA PHÁT HÀNH HÓA ĐƠN NÀO" KHI THỰC TẾ ĐÃ CÓ TỜ RA.
+ *
+ * ⚠️ CA HỎNG THẬT 20/08/2026, khách "ti?n". Một dòng lỗi tự nói ngược nhau:
+ *
+ *     «Đã phát hành 4/6 hóa đơn (5.400.000) rồi dừng: … CHƯA phát hành hóa
+ *      đơn nào.»
+ *
+ * Câu sau là của tầng dưới (đúng cho RIÊNG tờ thứ 5); câu đầu là của tầng này
+ * (đúng cho CẢ LỆNH). Nối lại thành ra vô nghĩa.
+ *
+ * ⛔ VÌ SAO PHẢI SỬA, KHÔNG PHẢI CHUYỆN CHỮ NGHĨA: ai đọc tới cuối rồi tin
+ * "CHƯA phát hành hóa đơn nào" sẽ cho chạy lại — và 4 tờ ĐÃ LÊN CƠ QUAN THUẾ
+ * bị xuất trùng, không rút lại được. Câu này còn được đẩy nguyên vào lịch sử,
+ * vào trang kế toán bên Sell, và vào tin nhắn Telegram.
+ *
+ * Chỉ cắt đúng câu ấy, giữ nguyên phần còn lại — phần còn lại mới là thứ nói
+ * vì sao dừng.
+ */
+const CAU_CHUA_RA_TO = /\s*(?:Đã dừng,\s*)?CH[ƯU]A phát hành hóa đơn nào\.?/gi;
+const boCauChuaRaTo = (chu) => String(chu || '').replace(CAU_CHUA_RA_TO, '').trim();
+
+
 
 /**
  * Gộp nhiều tờ thành MỘT gói kết quả cho tầng trên.

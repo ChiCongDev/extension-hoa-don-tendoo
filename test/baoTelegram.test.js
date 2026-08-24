@@ -316,13 +316,20 @@ test('⭐⭐⭐ cả lượt không chạy → PHẢI báo, vì không dòng kh�
     assert.match(chu, /Bỏ lỡ: 1 khách \(Bích Ngọc S1\)/, 'không nói bỏ lỡ ai: ' + chu);
 });
 
-test('⛔⛔ NGÀY YÊN Ả thì TUYỆT ĐỐI KHÔNG báo — kẻo mỗi tối một tin rác', async () => {
-    // Chuyện này xảy ra gần như MỖI TỐI. Báo nó là ba ngày sau người dùng tắt
-    // thông báo, và lúc đó những tin thật cũng chết theo.
+test('⭐⭐ NGÀY YÊN Ả cũng PHẢI báo — chủ dự án chốt 24/08/2026', async () => {
+    // ⚠️ ĐÂY LÀ QUYẾT ĐỊNH BỊ ĐẢO NGƯỢC, cố ý.
+    //
+    // Bản cũ TUYỆT ĐỐI không báo hai lý do này, vì chúng xảy ra gần như mỗi tối
+    // và "tin rác thì giết luôn giá trị của những tin thật". Tôi đã trình đúng
+    // lo ngại ấy kèm một phương án gộp-một-tin-mỗi-lượt; chủ dự án nghe rồi vẫn
+    // chọn BÁO HẾT — muốn lượt nào chạy xong cũng biết.
+    //
+    // Ghi lại ở đây để người đọc sau này thấy đây là một lựa chọn có cân nhắc,
+    // không phải một chốt bị quên.
     for (const l of ['KHONG_KHACH_NAO_PHAT_SINH', 'MOC_KHONG_CO_KHACH']) {
         const { kq, f } = await baoL({ lyDo: l });
-        assert.strictEqual(f.cac.length, 0, 'đã báo ngày yên ả: ' + l);
-        assert.strictEqual(kq.daGui, 0);
+        assert.strictEqual(f.cac.length, 1, 'KHÔNG báo ngày yên ả: ' + l);
+        assert.strictEqual(kq.daGui, 1, 'lý do: ' + l);
         assert.strictEqual(kq.hong, 0, 'đếm thành hỏng → báo động đỏ giả: ' + l);
     }
 });

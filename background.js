@@ -25,6 +25,8 @@ importScripts(
     'chung/dayVeSell.js',
     'chung/docBangToken.js',
     'chung/baoTelegram.js',
+    'chung/soDuKeToan.js',
+    'chung/apDungSoDat.js',
 );
 
 /** Tab mình tự mở thì tự dọn. Tab người dùng đang mở thì để nguyên. */
@@ -558,9 +560,35 @@ async function chayTheoHen(moc) {
         return;
     }
 
-    const { chay: dsChay, thieu } =
-        self.HDT_HenGio.ghepVoiBang(trongLich, bang.dong, true);
-    if (!dsChay.length) {
+    const ghep = self.HDT_HenGio.ghepVoiBang(trongLich, bang.dong, true);
+    let dsChay = ghep.chay;
+    let thieu = ghep.thieu;
+    let loiDatSo = [];
+
+    // ── SỐ TIỀN NGƯỜI DÙNG TỰ ĐẶT ───────────────────────────────────────────
+    //
+    // ⚠️ CHỈ CHẠM VÀO KHI CÓ NGƯỜI ĐẶT SỐ. Không ai đặt thì không một lần gọi
+    // mạng nào, không một điều kiện mới nào — khách để trống ô phải chạy đúng
+    // nếp cũ, và nếp cũ thì đã chạy đúng.
+    if (self.HDT_ApDungSoDat.coKhachDatSo(trongLich)) {
+        const kqDu = await self.HDT_SoDuKeToan.docSoDu({ caiDat: c, luc: Date.now() });
+        let soDu = kqDu.ok ? kqDu.soDu : null;
+        // Trừ những tờ ĐÃ RA THẬT mà chưa đẩy được về Sell — số dư Sell trả về
+        // chỉ phản ánh phần đã tới nơi. Xem chú thích truHangCho().
+        if (soDu) {
+            let cho = [];
+            try { cho = (await khoChoGui().doc()) || []; } catch (e) { cho = []; }
+            soDu = self.HDT_ApDungSoDat.truHangCho(soDu, Array.isArray(cho) ? cho : cho.ds);
+        }
+        const ap = self.HDT_ApDungSoDat.apDung({
+            trongLich, ghep, soDu, loiSoDu: kqDu.thongBao,
+        });
+        dsChay = ap.chay;
+        thieu = ap.thieu;
+        loiDatSo = ap.loi;
+    }
+
+    if (!dsChay.length && !loiDatSo.length) {
         dongTabNeuTuMo(tab);
         // Đây là NGÀY YÊN Ả, không phải lỗi: khách không mua thì không có gì để
         // xuất. Không mở tab Tendoo, không đăng nhập ai, không gạch tên ai.
@@ -574,7 +602,22 @@ async function chayTheoHen(moc) {
 
     const cn = await dungCauNoi();
     // Gửi sang Sell NGAY sau mỗi khách, không đợi hết loạt.
-    const tra = await cn.taoHoaDon(dsChay, taoMocDaySell(bang.ngay && bang.ngay.tu));
+    //
+    // Không còn ai chạy được (tất cả đều hỏng ở khâu số dư) thì KHÔNG mở tab
+    // Tendoo cho phí — nhưng vẫn phải dựng một kết quả để những lỗi ấy đi tiếp
+    // vào lịch sử và Telegram, chứ không biến mất.
+    const tra = dsChay.length
+        ? await cn.taoHoaDon(dsChay, taoMocDaySell(bang.ngay && bang.ngay.tu))
+        : { dung: true, ly_do: 'KHONG_DOC_DUOC_SO_DU', xong: [], loi: [], treo: [],
+            thongBao: 'Không khách nào chạy được vì chưa biết trần số dư.' };
+    // Ghép lỗi khâu số dư vào cùng chỗ với lỗi khi chạy — một đường duy nhất ra
+    // lịch sử và Telegram, khỏi phải nhớ có hai loại lỗi ở hai nơi.
+    if (loiDatSo.length) {
+        tra.loi = [...(tra.loi || []), ...loiDatSo.map(x => ({
+            id: '', maKH: x.maKH, tenKH: x.tenKH, soTien: 0,
+            maLoi: 'SO_DU_KHONG_DUNG', thongBao: x.thongBao,
+        }))];
+    }
     // ⚠️ KHÔNG được đóng đinh `chay: true`. Cầu nối có năm đường bỏ cuộc ở TẦNG
     // LƯỢT (đang chạy dở, không có tab, tab chưa sẵn sàng, giao diện lạ, giỏ còn
     // hàng) — cả năm đều trả về TRƯỚC khi đụng tới khách nào. Khai là "đã chạy"

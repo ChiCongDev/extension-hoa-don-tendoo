@@ -97,6 +97,9 @@ const CSS = `
 .hdt-gio-rieng { width:96px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
   padding:3px 6px; font-size:11.5px; font-family:inherit; text-align:center; }
 .hdt-gio-rieng.co { border-color:#2563eb; color:#1d4ed8; font-weight:600; }
+.hdt-tien-ngay { width:130px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
+  padding:4px 8px; font-size:13px; text-align:right; }
+.hdt-tien-ngay.co { border-color:#b45309; color:#b45309; font-weight:600; }
 .hdt-muc-ss { display:flex; justify-content:space-between; gap:10px; font-size:12px;
   padding:3px 0; border-bottom:1px dashed #f3f4f6; }
 .hdt-muc-ss:last-child { border-bottom:0; }
@@ -1026,6 +1029,8 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
     const themNgoai = (h.khach || []).filter(k => !daCo.has(k.maKH));
     // Giờ riêng đang lưu của từng khách, để điền sẵn vào ô.
     const gioRiengCu = new Map((h.khach || []).map(k => [k.maKH, k.moc || '']));
+    const tienNgayCu = new Map((h.khach || []).map(
+        k => [k.maKH, k.soTienNgay ? String(k.soTienNgay) : '']));
     for (const k of [...dsBang, ...themNgoai]) {
         const d = tailieu.createElement('div');
         d.className = 'hdt-dong-khach';
@@ -1056,9 +1061,59 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
         oGio.classList.toggle('co', !!oGio.value);
         d.appendChild(oGio);
 
+        // ⚠️ SỐ TIỀN XUẤT MỖI NGÀY — thay hẳn cho doanh số hôm nay.
+        // Để TRỐNG là chạy nếp cũ, và nếp cũ thì đã chạy đúng.
+        const oTien = tailieu.createElement('input');
+        oTien.type = 'text';
+        oTien.className = 'hdt-tien-ngay';
+        oTien.dataset.ma = k.maKH;
+        oTien.placeholder = 'tiền/ngày';
+        oTien.title = 'Để TRỐNG = xuất đúng doanh số hôm nay (như từ trước tới nay).\n'
+            + 'Điền số = mỗi ngày xuất đúng số này, BẤT KỂ doanh số hôm nay.\n'
+            + 'Trần cứng: không bao giờ vượt "tiền chưa xuất hóa đơn" của khách '
+            + '(tính trên TOÀN BỘ thời gian). Dư ít hơn thì xuất nốt phần còn lại.';
+        oTien.value = tienNgayCu.get(k.maKH) || '';
+        oTien.classList.toggle('co', !!oTien.value);
+        d.appendChild(oTien);
+
         oKhach.appendChild(d);
     }
     khoiHen.appendChild(oKhach);
+
+    // ── MỐC TÍNH SỐ DƯ ──────────────────────────────────────────────────────
+    //
+    // ⚠️ Chỉ có nghĩa khi có khách điền ô "tiền/ngày". Bên Sell, số dư "chưa
+    // xuất hóa đơn" CỘNG DỒN THEO KHOẢNG ĐANG XEM chứ không mang số dư từ trước
+    // sang — hỏi sai khoảng là ra sai trần, và trần sai thì xuất sai tiền thuế.
+    //
+    // Không đóng đinh "từ năm 2000" vì API trả MỘT DÒNG CHO MỖI NGÀY trong
+    // khoảng: khoảng vô lý là bắt Sell dựng cả chục nghìn dòng mỗi lần hỏi.
+    const khoiDu = tailieu.createElement('div');
+    khoiDu.className = 'hdt-dong-khach';
+    const nhanDu = tailieu.createElement('label');
+    nhanDu.className = 'ten';
+    nhanDu.textContent = 'Số dư "chưa xuất hóa đơn" tính từ ngày:';
+    khoiDu.appendChild(nhanDu);
+    const oDu = tailieu.createElement('input');
+    oDu.type = 'date';
+    oDu.id = 'hdt-so-du-tu-ngay';
+    oDu.className = 'hdt-gio-rieng';
+    oDu.style.width = '150px';
+    oDu.title = 'Chỉ cần khi có khách điền ô "tiền/ngày".\n'
+        + 'Đặt đúng ngày sớm nhất bạn muốn tính, để số dư đúng nghĩa "tất cả thời gian".\n'
+        + 'Để trống thì khách có đặt tiền/ngày sẽ KHÔNG chạy — máy không tự chọn bừa ngày.';
+    oDu.value = String(h.soDuTuNgay || '');
+    oDu.classList.toggle('co', !!oDu.value);
+    oDu.addEventListener('change', () => oDu.classList.toggle('co', !!oDu.value));
+    khoiDu.appendChild(oDu);
+    khoiHen.appendChild(khoiDu);
+
+    const ghiDu = tailieu.createElement('div');
+    ghiDu.className = 'hdt-ghi';
+    ghiDu.textContent = 'Ô "tiền/ngày" của mỗi khách: để trống = xuất đúng doanh số hôm nay '
+        + 'như từ trước tới nay. Điền số = mỗi ngày xuất đúng số đó, và KHÔNG BAO GIỜ vượt '
+        + 'tiền chưa xuất hóa đơn của khách ấy trên toàn bộ thời gian.';
+    khoiHen.appendChild(ghiDu);
 
     const ghiKhach = tailieu.createElement('div');
     ghiKhach.className = 'hdt-ghi';
@@ -1076,10 +1131,15 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
         .map((o) => {
             const g = oKhach.querySelector(`input.hdt-gio-rieng[data-ma="${o.dataset.ma}"]`);
             const moc = g ? String(g.value || '').trim() : '';
-            // Ô tích trả lời "có trong lịch không"; ô giờ chỉ trả lời "lúc mấy giờ".
-            // Bỏ tích là ra khỏi lịch, giờ riêng còn ghi đó cũng vô nghĩa.
-            return moc ? { maKH: o.dataset.ma, tenKH: o.dataset.ten, moc }
-                       : { maKH: o.dataset.ma, tenKH: o.dataset.ten };
+            const t = oKhach.querySelector(`input.hdt-tien-ngay[data-ma="${o.dataset.ma}"]`);
+            const soTienNgay = t ? String(t.value || '').trim() : '';
+            // Ô tích trả lời "có trong lịch không"; hai ô kia chỉ trả lời "lúc
+            // mấy giờ" và "bao nhiêu tiền". Bỏ tích là ra khỏi lịch, hai ô còn
+            // ghi gì ở đó cũng vô nghĩa.
+            const k2 = { maKH: o.dataset.ma, tenKH: o.dataset.ten };
+            if (moc) k2.moc = moc;
+            if (soTienNgay) k2.soTienNgay = soTienNgay;
+            return k2;
         });
 
     // Giờ `dsKhachDaTick` đã có -> vẽ lại lời nhắc trần hóa đơn cho đủ số liệu.
@@ -1271,6 +1331,7 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
                 bat: oBat.checked,
                 moc: String(oMoc.value || '').split(',').map(s => s.trim()).filter(Boolean),
                 urlBang: String((tailieu.defaultView || globalThis).location.href || ''),
+                soDuTuNgay: String(oDu.value || '').trim(),
             },
         };
         // Danh sách khách lấy từ CHÍNH bảng này, đọc ngay lúc bấm Lưu.

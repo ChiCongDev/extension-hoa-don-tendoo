@@ -181,7 +181,15 @@ function soanTin(dong) {
  * không có gì để xuất. Báo cái này là mỗi ngày một tin rác, và tin rác thì
  * giết luôn giá trị của những tin thật.
  */
-const LY_DO_YEN_A = new Set(['KHONG_KHACH_NAO_PHAT_SINH', 'MOC_KHONG_CO_KHACH']);
+// ⚠️ CHỦ DỰ ÁN CHỐT 24/08/2026: BÁO HẾT, kể cả ngày yên ả.
+//
+// Trước đây hai lý do dưới đây cố ý im, vì "KHONG_KHACH_NAO_PHAT_SINH xảy ra
+// gần như MỖI TỐI, báo là mỗi ngày một tin rác". Tôi đã trình đúng lo ngại ấy
+// và chủ dự án vẫn chọn báo hết — muốn lượt nào chạy xong cũng biết.
+//
+// Giữ lại danh sách (rỗng) chứ không xoá hẳn: chỗ này còn nguyên cửa để im lại
+// nếu tin rác thành vấn đề, và người đọc mã sau này thấy được quyết định.
+const LY_DO_YEN_A = new Set([]);
 
 /**
  * Soạn tin CẢ LƯỢT KHÔNG CHẠY.

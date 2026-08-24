@@ -217,6 +217,11 @@ function theHang(sp, chiSo) {
  *                        Nhận: true (bật) · false (tắt) · 'khong' (trang không có
  *                        công tắc — giao diện cũ). Mặc định: giao diện mới thì có
  *                        và BẬT, giao diện cũ thì không có.
+ *   - chanGioLechMs     CHÂN GIỎ VẼ CHẬM HƠN BẢNG DÒNG một nhịp — cảnh thật ngày
+ *                        24/08/2026. Trong `chanGioLechMs` mili-giây đầu, chân giỏ
+ *                        còn giữ con số CŨ; sau đó mới đuổi kịp. Ba nguồn đọc bất
+ *                        đồng trong khe ấy nên docTongGio() trả null — và chốt nào
+ *                        nhìn đúng một cái rồi kết luận sẽ hỏng oan cả khách.
  *   - chanGioLech       ÉP con số ở chân giỏ lệch khỏi tổng các dòng. Ảnh trang thật
  *                        22/08/2026: chân giỏ ghi 2.300.000 trong khi giỏ chỉ có một
  *                        dòng 1.450.000. Một trong hai sai — máy phải DỪNG.
@@ -239,7 +244,8 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        nangCapVangNutMs = 0,
                        themGapDoi = false, tongTreMs = 0,
                        khongCoDongTong = false, oSoLuongNhanGo = false,
-                       kieuNutXoa = 'dangerous', chanGioLech = null, hoaDonDienTu,
+                       kieuNutXoa = 'dangerous', chanGioLech = null, chanGioLechMs = 0,
+                       hoaDonDienTu,
                        chanTangTai = 0 } = {}) {
     // 'khong' | true | false — xem chú thích `hoaDonDienTu`.
     const hddt = hoaDonDienTu === undefined ? (giaoDienMoi ? true : 'khong') : hoaDonDienTu;
@@ -556,6 +562,15 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         if (chanGioLech != null) {
             dat('tongTt', tien(chanGioLech));
             dat('tongSp', tien(chanGioLech));
+        }
+        // ⚠️ CHÂN GIỎ ĐUỔI THEO SAU. Đặt con số CŨ vào trước, đúng nhịp sau mới
+        // sửa lại — dựng lại khe mà lượt 09:02 ngày 24/08/2026 rơi trúng.
+        if (chanGioLechMs > 0 && gio.length) {
+            const cu = tong + 990000;
+            dat('tongTt', tien(cu));
+            dat('tongSp', tien(cu));
+            setTimeout(() => { dat('tongTt', tien(tong)); dat('tongSp', tien(tong)); },
+                       chanGioLechMs);
         }
 
         boc.querySelectorAll('[data-dong]').forEach((khoi) => {

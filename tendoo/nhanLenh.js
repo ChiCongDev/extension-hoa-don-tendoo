@@ -272,8 +272,24 @@ async function xuLyMotLenh(lenh, boi) {
             // xảy ra thật ngày 18/08: c?ng hỏng một tờ, ki?n và ti?n chết theo.
             // donGioConSot ĐỐI CHIẾU DẤU GIỎ trước, đúng hàng máy vừa bỏ mới
             // dọn; hàng người dùng bày dở thì tuyệt đối không đụng.
+            //
+            // ⚠️⚠️ TRỪ NHÁNH KHÔNG RÕ. xuatMotHoaDon() đã cố ý KHÔNG dọn ở đó
+            // (xem chú thích của nó), nhưng TẦNG GỌI NÀY lại dọn — và dấu giỏ
+            // thì khớp, vì máy vừa tự tay bỏ hàng vào. Quy tắc viết ở một nơi,
+            // bị phá ở nơi khác; log 08:40 ngày 24/08/2026 ghi thẳng "Đã tự dọn
+            // 1 món" ngay dưới một dòng TREO.
+            //
+            // Hậu quả không phải chuyện nhỏ: máy bảo "Hãy mở Tendoo kiểm tra
+            // tận mắt" rồi tự tay xóa đúng thứ cần nhìn — mà GIỎ TRỐNG CHÍNH LÀ
+            // DẤU HIỆU CỦA MỘT LẦN PHÁT HÀNH TRÓT LỌT. Vừa xóa bằng chứng, vừa
+            // làm một thất bại trông y như thành công.
+            //
+            // Giỏ bẩn sẽ chặn lượt sau — và đó đúng là điều mong muốn: KHÔNG RÕ
+            // vốn đã treo lệnh và dừng cả loạt để bắt người kiểm tận mắt.
             let daDon = null;
-            try { daDon = await donGioConSot(boi); } catch (e) { daDon = null; }
+            if (to.ma !== MA_KHONG_RO) {
+                try { daDon = await donGioConSot(boi); } catch (e) { daDon = null; }
+            }
             const themLoiNhac = daDon && daDon.ok && daDon.daXoa
                 ? ` Đã tự dọn ${daDon.daXoa} món máy vừa bỏ vào giỏ.`
                 : '';

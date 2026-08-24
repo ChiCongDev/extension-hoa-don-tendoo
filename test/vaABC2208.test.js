@@ -928,6 +928,132 @@ test('⛔ đọc hình vẽ KHÔNG BAO GIỜ được ném — nó chạy trên 
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+ghiChu('— ⭐⭐⭐ L. BA CHỐT TRƯỚC CÚ BẤM PHẢI BIẾT CHỜ (ca hoa 09:02 ngày 24/08) —');
+
+// ⚠️ boVaoGio() ĐÃ chờ và xác nhận tổng đúng bằng 1.980.000. Rồi ĐK 3 đọc lại
+// ĐÚNG MỘT LẦN, trúng khe React vẽ dở, nhận về null, và dừng sau khi đã ra 4/6
+// tờ. `null` ở đây là BA NGUỒN BẤT ĐỒNG — chân giỏ chậm hơn bảng dòng một nhịp.
+// Đúng loại lỗi đã lấy mất 12.000.000đ và 9.612.236đ ngày 21/08 ở ĐK 4.
+
+const nhipThat = (ms) => new Promise(r => setTimeout(r, ms));
+
+const bamTren = (tuyChonTrang, tuyChonBam = {}) => {
+    const t = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }],
+                            giaoDienMoi: true, ...tuyChonTrang });
+    const luot = BamThanhToan.taoLuot();
+    return luot.bam(t.tailieu, {
+        daHieu: true, choPhep: true, tongMongDoi: HANG_MAU[0].gia,
+        nghi: nhipThat, nhipChoMs: 10, hanChoNutMo: 400, ...tuyChonBam,
+    }).then(kq => ({ t, kq }));
+};
+
+test('⭐⭐ TRANG GIẢ phải thật sự dựng được khe "chân giỏ trễ một nhịp"', async () => {
+    // ⚠️ Chốt cho CHÍNH TRANG GIẢ. Vòng gài lỗi cho thấy: tắt hẳn phần dựng khe
+    // ấy đi mà bài "phải chờ" vẫn XANH — vì không có khe thì tổng đúng ngay,
+    // chờ hay không chờ đều qua. Bài kiểm khi ấy chứng minh cho một thế giới
+    // không tồn tại, đúng kiểu xanh sai lý do nguy hiểm nhất.
+    const t = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }],
+                            giaoDienMoi: true, chanGioLechMs: 60 });
+    assert.strictEqual(BoGio.docTongGio(t.tailieu), null,
+        '⛔ trang giả KHÔNG dựng được khe bất đồng: ' + BoGio.keTongGio(t.tailieu));
+    assert.match(BoGio.keTongGio(t.tailieu), /chân giỏ 1\.980\.000đ · cộng dòng 990\.000đ/,
+        'khe không đúng hình dạng thật: ' + BoGio.keTongGio(t.tailieu));
+    await nhipThat(150);
+    assert.strictEqual(BoGio.docTongGio(t.tailieu), HANG_MAU[0].gia,
+        '⛔ chân giỏ không bao giờ đuổi kịp — thế thì không phải "trễ", mà là "sai"');
+});
+
+test('⭐⭐⭐ chân giỏ vẽ CHẬM một nhịp → phải CHỜ, không dừng oan', async () => {
+    const { t, kq } = await bamTren({ chanGioLechMs: 60 });
+    assert.strictEqual(kq.ok, true, '⛔ dừng oan — đúng lỗi 09:02 ngày 24/08: ' + kq.thongBao);
+    assert.strictEqual(t.daBam.xacNhan, 1, 'không bấm được Xác nhận');
+});
+
+test('⛔⛔ nhưng lệch THẬT thì VẪN phải dừng — không nới một đồng', async () => {
+    // Chờ là để React vẽ xong, KHÔNG phải để nhắm mắt cho qua. Chân giỏ lệch
+    // vĩnh viễn nghĩa là mình đọc sai giao diện, và lúc ấy tuyệt đối không bấm.
+    const { t, kq } = await bamTren({ chanGioLech: HANG_MAU[0].gia + 500000 });
+    assert.strictEqual(kq.ok, false);
+    assert.strictEqual(kq.ma, BamThanhToan.MA.TONG_KHONG_KHOP, 'mã lạ: ' + kq.ma);
+    assert.strictEqual(t.daBam.xacNhan, 0, '⛔⛔ ĐÃ BẤM trong khi tổng lệch');
+});
+
+test('⭐⭐ và phải KỂ RA CẢ BA phép đọc, không nói trơ một chữ «null»', async () => {
+    // ⚠️ Log 09:02 chỉ ghi «Tổng trên màn hình (null)». Tôi phải dựng lại cả một
+    // thử nghiệm mới biết chân giỏ là thủ phạm. Ba con số nói ngay ai lệch ai.
+    const { kq } = await bamTren({ chanGioLech: HANG_MAU[0].gia + 500000 });
+    assert.match(kq.thongBao, /nhãn /, kq.thongBao);
+    assert.match(kq.thongBao, /chân giỏ /, kq.thongBao);
+    assert.match(kq.thongBao, /cộng dòng /, kq.thongBao);
+    assert.match(kq.thongBao, /1\.490\.000đ/, 'không kể con số chân giỏ đang hiện: ' + kq.thongBao);
+});
+
+test('⭐⭐ ĐK 2 cũng phải chờ — React vẽ lại giỏ có khe trông như RỖNG', async () => {
+    const t = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }], giaoDienMoi: true });
+    // Tháo các dòng giỏ ra rồi gắn lại sau một nhịp — đúng kiểu React vẽ lại.
+    const boc = t.tailieu.getElementById('cacDongGio');
+    const giu = [...boc.childNodes];
+    for (const n of giu) boc.removeChild(n);
+    setTimeout(() => { for (const n of giu) boc.appendChild(n); }, 50);
+
+    const luot = BamThanhToan.taoLuot();
+    const kq = await luot.bam(t.tailieu, {
+        daHieu: true, choPhep: true, tongMongDoi: HANG_MAU[0].gia,
+        nghi: nhipThat, nhipChoMs: 10, hanChoNutMo: 400,
+    });
+    assert.notStrictEqual(kq.ma, BamThanhToan.MA.GIO_TRONG,
+        '⛔ kết luận "giỏ trống" trong khi React chỉ đang vẽ lại');
+    assert.strictEqual(kq.ok, true, kq.thongBao);
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+ghiChu('— ⭐⭐⭐ K. THẤY THỨ NGƯỜI DÙNG THẤY —');
+
+test('⭐⭐⭐ thông báo nổi của Tendoo phải vào được log', async () => {
+    // ⚠️ Ngày 24/08/2026 người dùng NHÌN THẤY chữ «tạo đơn thất bại» trên màn
+    // hình trong khi máy ghi "Tendoo nhận rồi mà không làm gì". Ant vẽ
+    // message/notification vào portal ở CUỐI <body> — ngoài bảng, nên phép dò
+    // chỉ-trong-bảng mù đúng câu quan trọng nhất.
+    const t = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }],
+                            giaoDienMoi: true, xacNhanNuot: true });
+    const toast = t.tailieu.createElement('div');
+    toast.className = 'ant-message';
+    toast.innerHTML = '<div class="ant-message-notice-content">'
+        + '<span>Tạo đơn thất bại</span></div>';
+    t.tailieu.body.appendChild(toast);
+
+    const luot = BamThanhToan.taoLuot();
+    const kq = await luot.bam(t.tailieu, {
+        daHieu: true, choPhep: true, tongMongDoi: HANG_MAU[0].gia,
+        nghi: async () => {}, nhipChoMs: 5, hanChoNutMo: 0, hanChoGioTrong: 30,
+    });
+    assert.strictEqual(kq.ma, BamThanhToan.MA.KHONG_RO, 'mã lạ: ' + kq.ma);
+    assert.match(kq.thongBao, /Tendoo báo:.*Tạo đơn thất bại/,
+        '⛔ vẫn mù với câu Tendoo nói thẳng trên màn hình: ' + kq.thongBao);
+});
+
+test('⛔ Ant lồng nhiều lớp cho MỘT tin → không được kể ba lần', async () => {
+    const d = dungTaiLieu('<div class="ant-message"><div class="ant-message-notice-content">'
+        + '<span role="alert">Tạo đơn thất bại</span></div></div>');
+    const ke = BamThanhToan.keLaiManHinh(d);
+    assert.strictEqual((ke.match(/Tạo đơn thất bại/g) || []).length, 1, ke);
+});
+
+test('⭐⭐ trạng thái CA phải nằm trong lời kể', async () => {
+    const dong = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }],
+                               giaoDienMoi: true, coNutMoCa: true });
+    const mo = taoTrangPos({ gioBanDau: [{ ten: HANG_MAU[0].ten }], giaoDienMoi: true });
+    assert.match(BamThanhToan.keLaiManHinh(dong.tailieu), /ca CHƯA mở/);
+    assert.match(BamThanhToan.keLaiManHinh(mo.tailieu), /ca đang mở/);
+});
+
+test('⛔ keLaiManHinh KHÔNG BAO GIỜ được ném — nó chạy trên đường thoát', () => {
+    for (const x of [null, undefined, {}]) {
+        assert.doesNotThrow(() => BamThanhToan.keLaiManHinh(x));
+    }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 (async () => {
     console.log('\nBA BẢN VÁ 22/08/2026\n');
     for (const [ten, fn] of cho) {

@@ -355,6 +355,34 @@ function keLaiManHinh(tailieu) {
         }
         if (!bangXn && !chan) phan.push('không có bảng nào đang mở');
     } catch (e) { phan.push('không đọc được bảng đang mở'); }
+    // ⚠️⚠️ THÔNG BÁO NỔI CỦA TENDOO — QUÉT TOÀN TRANG, KHÔNG CHỈ TRONG BẢNG.
+    //
+    // Ngày 24/08/2026 người dùng NHÌN THẤY chữ «tạo đơn thất bại» trên màn hình
+    // trong khi máy ghi "Tendoo nhận rồi mà không làm gì". Vì keRuotBang() chỉ
+    // dò lỗi bên TRONG bảng, còn Ant Design vẽ message/notification vào một
+    // portal ở CUỐI <body> — ngoài bảng. Máy mù đúng câu quan trọng nhất, và
+    // tôi đã phải đoán suốt hai ngày trong khi Tendoo nói thẳng ra ngay đó.
+    try {
+        const D = boDo();
+        const tin = [...tailieu.querySelectorAll(
+            '.ant-message-notice-content, .ant-notification-notice, .ant-message, '
+            + '.ant-notification, [role=alert], .ant-form-item-explain-error')]
+            .map(e => D.gonChu(e)).filter(Boolean);
+        // Ant lồng nhiều lớp cho CÙNG một tin: .ant-message > .ant-message-notice-content
+        // > [role=alert] đều cho ra y hệt một chuỗi. Lọc "chuỗi con" thôi thì
+        // KHÔNG đủ — ba chuỗi GIỐNG HỆT nhau không cái nào là con của cái nào,
+        // nên phải bỏ trùng chính xác TRƯỚC, rồi mới bỏ chuỗi con.
+        const rieng = [...new Set(tin)];
+        const gon = rieng.filter(t => !rieng.some(k => k !== t && k.includes(t)))
+            .map(t => t.slice(0, 160)).slice(0, 3);
+        if (gon.length) phan.push('Tendoo báo: ' + gon.map(x => '«' + x + '»').join(' / '));
+    } catch (e) { /* kể được gì hay nấy */ }
+    // ⚠️ TRẠNG THÁI CA. Nút "Vào ca" còn hiện nghĩa là ca chưa mở — một trong
+    // hai nghi phạm của việc Tendoo lặng lẽ từ chối tạo đơn. Ghi lại để lần sau
+    // khẳng định hoặc loại bỏ được ngay, thay vì ngồi suy tiếp.
+    try {
+        phan.push(timNutMoCa(tailieu) ? 'ca CHƯA mở (trang còn hiện nút mở ca)' : 'ca đang mở');
+    } catch (e) { /* kể được gì hay nấy */ }
     try {
         const B = boGio();
         const dong = B.docCacDongGio(tailieu);
@@ -872,21 +900,63 @@ function taoLuot() {
                      thongBao: 'Chưa bật cho phép tự bấm Thanh toán.' };
         }
 
+        // ⚠️⚠️ NHỊP CHỜ DÙNG CHUNG cho ĐK 2, ĐK 3 và ĐK 4 — KHAI BÁO Ở ĐÂY,
+        // TRƯỚC MỌI CHỖ DÙNG. Bản trước từng dùng một biến khai báo mãi phía
+        // dưới, và nó ném ReferenceError đúng vào khoảnh khắc bệnh xảy ra, tức
+        // là đúng lúc cần nó nhất. Vùng chết thời gian không tha ai.
+        const nhipCho = tuyChon.nhipChoMs || NhipDo.NHIN_DOM;
+        const hanCho = tuyChon.hanChoNutMo == null
+            ? NhipDo.HAN_CHO_NUT_MO_KHOA : tuyChon.hanChoNutMo;
+
         // ── ĐK 2: giỏ phải có hàng ──────────────────────────────────────────
+        //
+        // ⚠️ CŨNG PHẢI BIẾT CHỜ. React vẽ lại bảng giỏ thì có một khe rất ngắn
+        // trang trông như giỏ rỗng. Nhìn đúng một cái rồi kết luận là hỏng oan
+        // cả khách — cùng loại bẫy với ĐK 3 và ĐK 4 bên dưới.
+        for (let da = 0; da <= hanCho && B.gioDangTrong(tailieu); da += nhipCho) {
+            if (da + nhipCho > hanCho) break;
+            await nghi(nhipCho);
+        }
         if (B.gioDangTrong(tailieu)) {
             return { ok: false, ma: MA.GIO_TRONG,
                      thongBao: 'Giỏ hàng đang trống — không có gì để phát hành.' };
         }
 
         // ── ĐK 3: tổng phải khớp TUYỆT ĐỐI ──────────────────────────────────
-        const tongTrenManHinh = B.docTongGio(tailieu);
+        //
+        // ⚠️⚠️ CA HỎNG THẬT 09:02 ngày 24/08/2026, khách hoa: đã ra 4/6 tờ rồi
+        // dừng với «Tổng trên màn hình (null)». boVaoGio() ngay trước đó ĐÃ CHỜ
+        // và xác nhận tổng đúng bằng 1.980.000 — rồi chốt này đọc lại ĐÚNG MỘT
+        // LẦN, trúng khe React đang vẽ dở, và nhận về null.
+        //
+        // `null` ở đây nghĩa là BA NGUỒN ĐỌC BẤT ĐỒNG (chân giỏ chậm hơn bảng
+        // dòng một nhịp), không phải "giỏ sai tiền". Lưới đối chiếu ba nguồn
+        // vẫn đáng giữ; thứ thiếu là sự kiên nhẫn đi kèm nó.
+        //
+        // Đây đúng loại lỗi đã lấy mất 12.000.000đ và 9.612.236đ ngày 21/08 ở
+        // ĐK 4. Vá ĐK 4 xong mà để ĐK 3 ngay bên trên trơ trọi là vá nửa vời.
+        //
+        // ⚠️ CHỜ KHÔNG ĐỤNG VÀO TRANG nên an toàn tuyệt đối, và khớp rồi là đi
+        // ngay — không tốn giây nào khi trang đã sẵn. Điều kiện vẫn nguyên vẹn:
+        // KHỚP TUYỆT ĐỐI, lệch một đồng là dừng.
         const mongDoi = Number(tuyChon.tongMongDoi);
+        if (Number.isFinite(mongDoi)) {
+            for (let da = 0; da <= hanCho && B.docTongGio(tailieu) !== mongDoi; da += nhipCho) {
+                if (da + nhipCho > hanCho) break;
+                await nghi(nhipCho);
+            }
+        }
+        const tongTrenManHinh = B.docTongGio(tailieu);
         if (!Number.isFinite(mongDoi) || tongTrenManHinh == null
             || tongTrenManHinh !== mongDoi) {
             return {
                 ok: false, ma: MA.TONG_KHONG_KHOP,
                 thongBao: `Tổng trên màn hình (${tongTrenManHinh}) không khớp tổng đã tính `
-                    + `(${tuyChon.tongMongDoi}) — KHÔNG bấm Thanh toán.`,
+                    + `(${tuyChon.tongMongDoi}) sau ${chuThoiGian(hanCho)} — KHÔNG bấm Thanh toán.`
+                    // ⚠️ Chữ «null» trơ trọi không nói được gì. Ba con số nói
+                    // ngay ai lệch với ai — chẩn đoán 24/08 tốn của tôi một vòng
+                    // thử nghiệm chỉ vì thiếu đúng dòng này.
+                    + ` Máy đọc được: ${B.keTongGio(tailieu)}.`,
             };
         }
 
@@ -931,9 +1001,11 @@ function taoLuot() {
         // mãi phía dưới (sau cú bấm), nên dùng ở đây là VÙNG CHẾT THỜI GIAN —
         // ném ReferenceError đúng vào khoảnh khắc bệnh xảy ra, tức là đúng lúc
         // cần nó nhất. Đã dính thật lúc viết bản vá này, và bài test bắt được.
-        const nhipKhoa = tuyChon.nhipChoMs || NhipDo.NHIN_DOM;
-        const hanKhoa = tuyChon.hanChoNutMo == null
-            ? NhipDo.HAN_CHO_NUT_MO_KHOA : tuyChon.hanChoNutMo;
+        // ⚠️ DÙNG CHUNG nhịp với ĐK 2 và ĐK 3 (khai báo ở đầu hàm). Ba chốt
+        // liên tiếp cùng chờ một thứ — React vẽ xong — thì phải cùng một nhịp
+        // và cùng một hạn, nếu không sửa hạn ở một chỗ là lệch hai chỗ kia.
+        const nhipKhoa = nhipCho;
+        const hanKhoa = hanCho;
         let nut = timNutThanhToan(tailieu);
         if (nut && nut.disabled) {
             for (let da = 0; da <= hanKhoa; da += nhipKhoa) {

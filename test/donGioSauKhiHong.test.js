@@ -151,6 +151,23 @@ test('⭐⭐ dọn cho MỌI mã lỗi trước cú bấm "Xác nhận"', async 
 
 ghiChu('— ⛔⛔ KHÔNG RÕ: giữ nguyên giỏ, đó là TANG CHỨNG —');
 
+test('⛔⛔⛔ KHÔNG RÕ + dấu giỏ KHỚP → VẪN phải giữ nguyên giỏ', async () => {
+    // ⚠️⚠️ CHỖ HỞ THẬT, log 08:40 ngày 24/08/2026 ghi thẳng ra. xuatMotHoaDon()
+    // cố ý KHÔNG dọn ở nhánh KHÔNG RÕ — nhưng TẦNG GỌI nó (vòng chia rổ) lại
+    // gọi donGioConSot() cho MỌI rổ hỏng, và dấu giỏ thì khớp vì máy vừa tự tay
+    // bỏ hàng vào. Quy tắc viết ở một nơi, bị phá ở nơi khác.
+    //
+    // Hậu quả không nhỏ: máy bảo "Hãy mở Tendoo kiểm tra tận mắt" rồi tự tay
+    // xóa đúng thứ cần nhìn — mà GIỎ TRỐNG CHÍNH LÀ DẤU HIỆU CỦA MỘT LẦN PHÁT
+    // HÀNH TRÓT LỌT. Vừa xóa bằng chứng, vừa làm thất bại trông y như thành công.
+    const { trang, kq } = await chayLenh({ giuGioSauXacNhan: true });
+    assert.strictEqual(kq.ma, BamThanhToan.MA.KHONG_RO, 'thông báo: ' + kq.thongBao);
+    assert.ok(trang.xemGio().length > 0,
+        '⛔⛔ ĐÃ DỌN GIỎ ở nhánh KHÔNG RÕ — xóa mất tang chứng người dùng cần nhìn');
+    assert.ok(!/Đã tự dọn/.test(kq.thongBao),
+        'khoe đã dọn trong khi tuyệt đối không được dọn: ' + kq.thongBao);
+});
+
 test('⛔⛔ KHÔNG RÕ + dấu giỏ KHÔNG khớp → GIỮ NGUYÊN giỏ', async () => {
     // ⚠️ RANH GIỚI THẬT, và tôi đã hiểu sai nó lúc đầu. Dự án có HAI đường dọn:
     //
@@ -266,7 +283,7 @@ ghiChu('— Phiên bản phải TĂNG mỗi lần sửa —');
 // khi phép kiểm chỉ đòi ">= 2.21" — tiêu đề và phép kiểm nói hai đằng, và vòng
 // gài lỗi "quên tăng phiên bản" vẫn XANH. Tiêu đề đọc thì tin được, chạy thì
 // không chứng minh gì: đúng loại bài kiểm tệ nhất.
-const BAN_TOI_THIEU = [2, 26];
+const BAN_TOI_THIEU = [2, 27];
 
 test(`⭐ manifest lên ${BAN_TOI_THIEU.join('.')}.x — để người dùng biết mình chạy bản nào`, () => {
     // ⚠️ Ngày 22/08/2026 tôi vá BA đợt mà để nguyên 2.20.0, nên nhìn số phiên

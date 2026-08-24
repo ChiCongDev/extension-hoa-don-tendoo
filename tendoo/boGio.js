@@ -595,6 +595,23 @@ function docTongGio(tailieu) {
 }
 
 /**
+ * KỂ RA CẢ BA PHÉP ĐỌC TỔNG GIỎ.
+ *
+ * ⚠️ VÌ SAO. docTongGio() trả `null` cho hai chuyện khác hẳn nhau: "không đọc
+ * được gì" và "ba nguồn bất đồng". Lượt 09:02 ngày 24/08/2026 khách hoa dừng
+ * với đúng một chữ «null» — tôi phải dựng lại cả một thử nghiệm mới biết là
+ * chân giỏ vẽ chậm hơn bảng dòng một nhịp. Ba con số nói ngay ai lệch với ai.
+ */
+function keTongGio(tailieu) {
+    const so = (x) => (x == null ? 'không đọc được' : Number(x).toLocaleString('vi-VN') + 'đ');
+    try {
+        return 'nhãn ' + so(docTongTheoNhan(tailieu))
+            + ' · chân giỏ ' + so(docTongChanGio(tailieu))
+            + ' · cộng dòng ' + so(docTongTuCacDong(tailieu));
+    } catch (e) { return 'không kể được các phép đọc tổng'; }
+}
+
+/**
  * Tổng thanh toán, CÓ CHỜ và CÓ HIỂU chuyện giỏ trống.
  *
  * ⚠️ Đo trang THẬT ngày 2026-08-12: giỏ trống thì Tendoo KHÔNG vẽ chân giỏ —
@@ -1280,7 +1297,7 @@ const API = { coGiaTrongChu, coMaTrongChu, coOMaRieng, docGiaTuLa, docTonTuLa, t
               coBieuTuongXoa, keCacNutTrongDong,
               cacTienTrongKhoi, docThanhTienDong, docTongTuCacDong, docTongTheoNhan, docTongChanGio, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
               xoaSachGio, timNutXoaDong, timNutCong, gioDangTrong, timOTimKiem,
-              docTongGioChoKip, MA };
+              docTongGioChoKip, keTongGio, MA };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_BoGio = API;
 

@@ -61,10 +61,16 @@ function taoCauNoi({ timTabTendoo, guiToiTab, so, hangDoi, truocMoiKhach,
     const cho = nghi || (ms => new Promise(r => setTimeout(r, ms)));
     let dangChay = false;
 
+    // Nhịp chờ trước khi hỏi lại trạng thái giỏ. React dựng lại đơn hàng dở
+    // trong khoảng này. Lượt chỉ chạy 1-2 lần mỗi ngày nên thêm chừng này là
+    // rẻ hơn nhiều so với mất một tầng bảo vệ.
+    const NHIP_XAC_NHAN_GIO_MS = 1500;
+
     /**
      * @param {Array<{maKH:string, tenKH?:string, soTien:number}>} danhSach
      * @param {(tin:object)=>void} [bao] báo tiến độ ra ngoài
      */
+
     async function taoHoaDon(danhSach, bao = () => {}) {
         if (dangChay) {
             return { dung: true, ly_do: LY_DO.DANG_CHAY,
@@ -137,6 +143,31 @@ function taoCauNoi({ timTabTendoo, guiToiTab, so, hangDoi, truocMoiKhach,
                           + 'hãy BẤM F5 TRÊN TAB TENDOO rồi thử lại — Chrome chỉ chèn '
                           + 'code vào trang lúc trang tải.',
                 };
+            }
+
+            // ⚠️⚠️ ĐỌC GIỎ MỘT LẦN LÀ KHÔNG ĐỦ — HỎI LẠI KHI NGHE "TRỐNG".
+            //
+            // Câu trả lời "sẵn sàng" chỉ đo ĐÃ NẠP ĐỦ BỘ PHẬN và ĐANG ĐỨNG ĐÚNG
+            // TRANG. Cả hai thứ ấy có ngay khi content script chạy — KHÔNG cái
+            // nào đo "React đã vẽ xong giỏ chưa". Tab vừa được máy tự mở trả lời
+            // "sẵn sàng" trong lúc Tendoo chưa dựng lại đơn hàng đang dở, nên
+            // giỏ trông TRỐNG.
+            //
+            // CA HỎNG THẬT 21:20 ngày 22/08/2026: giỏ có 2 món (1.840.000đ) do
+            // người dùng tự chọn, nhưng cửa chặn ngay dưới đây không đóng vì
+            // `gioTrong` về true. Cả lượt đi tiếp rồi mới chết ở khách đầu tiên
+            // — sổ lệnh có thêm một dòng lỗi lẽ ra không nên có, và mất hẳn một
+            // tầng bảo vệ. (Không phát hành sai gì: tầng dưới vẫn chặn đúng.)
+            //
+            // ⚠️ CHỈ HỎI LẠI KHI LẦN ĐẦU NÓI "TRỐNG". Đó là câu trả lời DUY NHẤT
+            // có thể sai theo hướng nguy hiểm — nghe "có hàng" thì đã đúng rồi,
+            // hỏi thêm chỉ tốn thời gian đúng vào lúc xấu nhất.
+            if (sanSang.gioTrong !== false) {
+                await cho(NHIP_XAC_NHAN_GIO_MS);
+                const lai = await guiToiTab(tab.id, { loai: LOAI_TIN.HOI_SAN_SANG });
+                // Câu sau chỉ được thay câu trước khi nó CÒN HỢP LỆ. Tab tắt
+                // giữa chừng trả về rỗng — lấy rỗng đè lên là tự làm mù mình.
+                if (lai && lai.sanSang) sanSang = lai;
             }
 
             // ── Giỏ phải TRỐNG trước khi bắt đầu ────────────────────────────

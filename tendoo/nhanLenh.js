@@ -29,6 +29,12 @@ const KHOA_CAI_DAT = 'hdt-cai-dat-bang-thu';
 const LOAI_XU_LY = 'hdt-xu-ly-khach';
 const LOAI_HOI_SAN_SANG = 'hdt-hoi-san-sang';
 const LOAI_DON_GIO = 'hdt-don-gio';
+const LOAI_CHUP_GIAO_DIEN = 'hdt-chup-giao-dien';
+
+// ⚠️ PHẢI KHỚP với KET_QUA_KHONG_RO trong chung/hangDoi.js. Đây là mã DUY NHẤT
+// nghĩa là "đã bấm Xác nhận mà không rõ kết quả" — và cũng là mã duy nhất máy
+// KHÔNG được dọn giỏ, vì hóa đơn có thể đã ra thật.
+const MA_KHONG_RO = 'KHONG_RO';
 
 // ⚠️ TRẦN SỐ TỜ CHO MỘT KHÁCH. Chẻ nhỏ mà số tiền lớn bất thường thì một lệnh
 // hóa thành hàng trăm hóa đơn — chạy cả tiếng, ăn hết hạn mức hóa đơn của gói
@@ -484,13 +490,56 @@ async function xuatMotHoaDon({ boi, lenh, caiDat, choBam, tailieu,
         await xoaDau(boi);          // Tendoo tự dọn giỏ sau khi phát hành
         return { ok: true, ketQua };
     }
+    // ── DỌN NGAY THỨ MÌNH VỪA BÀY RA ────────────────────────────────────────
+    //
+    // ⚠️ CA HỎNG THẬT 22/08/2026. Lượt 11:29 dừng ở bảng xác nhận (BANG_SAI_TONG)
+    // rồi bỏ đi, ĐỂ NGUYÊN rổ đầu của khách "ki?n" (1.450.000đ) trong giỏ. Lượt
+    // 12:25 tới, thấy giỏ không trống, chết ngay từ chốt đầu tiên. Và cứ thế mãi
+    // — MỘT lỗi làm kẹt vô thời hạn mọi lượt sau.
+    //
+    // Máy vốn có đường dọn "lười": gặp giỏ bẩn ở đầu lượt sau thì dọn. Nhưng
+    // đường ấy phải ĐỐI CHIẾU DẤU GIỎ để chắc hàng là của mình, và nó đã không
+    // nhận ra. Dọn NGAY TẠI ĐÂY thì không cần đoán: máy vừa bỏ vào, nó biết.
+    //
+    // ⛔ TRỪ 'KHONG_RO'. Mã ấy nghĩa là ĐÃ BẤM "Xác nhận" mà không đọc được kết
+    // quả — hóa đơn có thể đã lên cơ quan thuế. Giỏ phải giữ NGUYÊN để người
+    // dùng mở Tendoo đối chiếu tận mắt. Dọn ở đó là xoá mất tang chứng của một
+    // chuyện có thể đã xảy ra thật.
+    //
+    // Mọi mã lỗi còn lại đều xảy ra TRƯỚC cú bấm "Xác nhận" — chắc chắn chưa
+    // phát hành gì, và hàng trong giỏ chắc chắn là của máy.
+    let themChu = '';
+    if (bam.ma !== MA_KHONG_RO) {
+        const soMon = BoGio.docCacDongGio(tailieu).length;
+        let don = null;
+        try { don = await BoGio.xoaSachGio(tailieu); } catch (e) { don = null; }
+        ketQua.daDonGio = !!(don && don.ok);
+        if (ketQua.daDonGio) {
+            await xoaDau(boi);                       // giỏ sạch -> dấu hết nghĩa
+            if (soMon > 0) themChu = ` Đã tự dọn ${soMon} món máy vừa bỏ vào giỏ.`;
+        } else {
+            // ⚠️ PHẢI KÊU LÊN. Im lặng ở đây thì lượt sau chết vì giỏ bẩn mà
+            // người đọc log không hiểu vì sao — đúng cái vòng luẩn quẩn 22/08.
+            //
+            // ⚠️⚠️ VÀ PHẢI MANG THEO LỜI KHAI CỦA xoaSachGio(). Bản 2.22.0 đã
+            // làm nó kể ra mọi nút trong dòng giỏ — lớp CSS, nhãn, tên biểu
+            // tượng — đúng thứ cần để biết giao diện Tendoo đổi ra sao. Nhưng
+            // chỗ này chỉ đọc `don.ok` rồi NÉM `don.thongBao` đi, nên log 22:33
+            // ngày 22/08/2026 chỉ còn trơ một câu "KHÔNG dọn được giỏ". Bằng
+            // chứng dựng công phu, bị vứt đúng lúc cần nhất.
+            const khai = String((don && don.thongBao) || '').trim();
+            themChu = ' ⚠ KHÔNG dọn được giỏ — lượt sau sẽ bị chặn. Hãy sang tab Tendoo '
+                + 'bấm "Xóa sạch giỏ" trên bảng nổi.'
+                + (khai ? ' Máy nói: ' + khai : '');
+        }
+    }
     // Trả nguyên mã lỗi lên. Riêng KHONG_RO (đã bấm mà không biết kết quả) được
     // hàng đợi xử lý riêng: TREO lệnh và dừng cả loạt, xem KET_QUA_KHONG_RO.
-    return { ok: false, ma: bam.ma, thongBao: bam.thongBao, ketQua };
+    return { ok: false, ma: bam.ma, thongBao: String(bam.thongBao || '') + themChu, ketQua };
 }
 
-const API = { xuLyMotLenh, docCaiDat, donGioConSot, KHOA_CAI_DAT,
-              LOAI_XU_LY, LOAI_HOI_SAN_SANG, LOAI_DON_GIO };
+const API = { xuLyMotLenh, docCaiDat, donGioConSot, KHOA_CAI_DAT, MA_KHONG_RO,
+              LOAI_XU_LY, LOAI_HOI_SAN_SANG, LOAI_DON_GIO, LOAI_CHUP_GIAO_DIEN };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_NhanLenh = API;
 
@@ -613,6 +662,28 @@ if (typeof globalThis !== 'undefined') globalThis.HDT_NhanLenh = API;
                     traLoi({ maCuaHang: '', tenTaiKhoan: '' });
                 }
             })();
+            return true;
+        }
+
+        // ── CHỤP GIAO DIỆN POS BẰNG CHỮ ─────────────────────────────────
+        //
+        // ⚠️ Ngày 22/08/2026 Tendoo thay giao diện và mọi khách hỏng cùng lúc.
+        // Lúc ấy không có cách nào nhìn thấy trang: nó là ứng dụng React sau
+        // đăng nhập, tải bằng lệnh chỉ ra cái vỏ rỗng. Mà extension thì ĐÃ Ở
+        // SẴN TRONG TRANG — chỉ là chưa ai nghĩ tới việc bảo nó kể lại.
+        //
+        // ⛔ CHỈ ĐỌC. Không bấm gì, không điền gì, không phát hành gì.
+        if (tin && tin.loai === LOAI_CHUP_GIAO_DIEN) {
+            try {
+                const C = G.HDT_ChupGiaoDien;
+                if (!C) {
+                    traLoi({ ok: false, thongBao: 'Thiếu bộ chụp giao diện — tải lại extension.' });
+                } else {
+                    traLoi({ ok: true, chu: C.chupGiaoDien(G.document, tin.tuyChon || {}) });
+                }
+            } catch (e) {
+                traLoi({ ok: false, thongBao: 'Chụp hỏng: ' + ((e && e.message) || String(e)) });
+            }
             return true;
         }
 

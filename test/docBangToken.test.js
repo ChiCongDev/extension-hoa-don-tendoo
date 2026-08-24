@@ -167,11 +167,72 @@ test('500 → dừng, không đọc số', async () => {
     assert.strictEqual(kq.ma, 'SELL_LOI');
 });
 
-test('mất mạng → dừng, không nổ', async () => {
-    const kq = await DT.docBangQuaToken(CAI_DAT, taoFetch([], { nemLoi: true }));
+ghiChu('— ⭐⭐ MẠNG CHẬP THÌ THỬ LẠI (chủ dự án chốt 2026-08-22) —');
+
+// ⚠️ CA HỎNG THẬT 21/08/2026, mốc 18:10: «Không gọi được bongtom.store: Failed
+// to fetch» -> CẢ LƯỢT không chạy, khách Bích Ngọc S1 chưa chạy tới. Năm phút
+// sau (18:15) mọi thứ lại chạy sạch. Mạng chập một cái là mất trọn một mốc giờ.
+//
+// ⚠️ VÌ SAO THỬ LẠI Ở ĐÂY AN TOÀN TUYỆT ĐỐI: đây là việc CHỈ ĐỌC — một lời gọi
+// GET lấy doanh thu. Không bấm gì, không bỏ gì vào giỏ, không phát hành gì.
+// Gọi mười lần cũng không sinh nổi một đồng hóa đơn.
+
+/** fetch giả: N lần đầu NÉM (mất mạng), sau đó trả về bình thường. */
+function taoFetchChap(cacTrang, soLanNem) {
+    const that = taoFetch(cacTrang);
+    let con = soLanNem;
+    const f = async (url, tuyChon) => {
+        if (con-- > 0) { f.daGoi.push({ url: String(url), nem: true }); throw new Error('mất mạng'); }
+        return that(url, tuyChon);
+    };
+    f.daGoi = that.daGoi;
+    return f;
+}
+
+const NHANH = { ...CAI_DAT, nghiGiuaLanMs: 0 };
+
+test('⭐⭐ chập HAI lần rồi thông → vẫn đọc được, KHÔNG mất cả mốc giờ', async () => {
+    const f = taoFetchChap([[khach('TB', 'Trang Bé TB', 8795000, 1)]], 2);
+    const kq = await DT.docBangQuaToken(NHANH, f);
+    assert.strictEqual(kq.ok, true, 'thông báo: ' + kq.thongBao);
+    assert.strictEqual(kq.dong.length, 1);
+    assert.strictEqual(f.daGoi.length, 3, 'gọi ' + f.daGoi.length + ' lần');
+});
+
+test('mất mạng suốt → dừng, không nổ, và NÓI RÕ đã thử mấy lần', async () => {
+    const f = taoFetch([], { nemLoi: true });
+    const kq = await DT.docBangQuaToken(NHANH, f);
     assert.strictEqual(kq.ok, false);
     assert.strictEqual(kq.ma, 'KHONG_GOI_DUOC');
+    assert.match(kq.thongBao, /sau \d+ lần thử/, 'không nói đã thử mấy lần: ' + kq.thongBao);
+    assert.ok(f.daGoi.length >= 2, 'không hề thử lại: ' + f.daGoi.length);
 });
+
+test('⛔⛔ MÁY CHỦ TRẢ LỜI mà từ chối thì KHÔNG thử lại', async () => {
+    // 403 sai token, 404 sai địa chỉ, 500 lỗi máy chủ — thử lại vô nghĩa, và
+    // còn giấu mất lỗi thật sau mấy giây chờ. Chỉ chập MẠNG mới đáng thử lại.
+    for (const st of [403, 404, 500]) {
+        const f = taoFetch([], { status: st });
+        const kq = await DT.docBangQuaToken(NHANH, f);
+        assert.strictEqual(kq.ok, false, 'status ' + st);
+        assert.strictEqual(f.daGoi.length, 1,
+            'đã thử lại ' + f.daGoi.length + ' lần với status ' + st + ' — vô nghĩa và làm chậm');
+    }
+});
+
+test('⛔ trả về rác (không phải JSON) cũng KHÔNG thử lại', async () => {
+    const f = taoFetch([], { traRac: true });
+    await DT.docBangQuaToken(NHANH, f);
+    assert.strictEqual(f.daGoi.length, 1, 'thử lại ' + f.daGoi.length + ' lần');
+});
+
+test('⛔ gọi được ngay lần đầu thì KHÔNG gọi thừa', async () => {
+    const f = taoFetch([[khach('TB', 'Trang Bé TB', 100, 1)]]);
+    await DT.docBangQuaToken(NHANH, f);
+    assert.strictEqual(f.daGoi.length, 1);
+});
+
+
 
 test('⭐ Sell trả về TRANG ĐĂNG NHẬP thay vì JSON → dừng', async () => {
     // Đăng xuất giữa chừng thì Sell chuyển hướng về màn đăng nhập. Không bắt

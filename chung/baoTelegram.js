@@ -81,18 +81,35 @@ const chuTien = (n) => Number(n).toLocaleString('vi-VN');
 const ngayTrongGio = (gio) => String(gio || '').slice(0, 10);
 
 /**
- * Dòng này có đáng báo không.
+ * Dòng này thuộc loại tin nào — hay không đáng báo (null).
  *
- * ⛔ CHỈ 'RA_HOA_DON'. 'VAO_GIO' là công tắc tự bấm đang tắt — hàng mới nằm
- * trong giỏ, CHƯA có hóa đơn nào. Báo nhầm cái đó là nói dối trắng trợn.
- * Số tiền phải > 0: 'RA_HOA_DON' mà 0đ thì không có gì để khoe.
+ * ⚠️ CHỦ DỰ ÁN CHỐT 2026-08-22: phải báo CẢ KHI LỖI. Trước đó chỉ báo thành
+ * công, nên đêm 21/08 ba tờ ra thì có tin, còn hai lỗi thì IM LẶNG HOÀN TOÀN —
+ * kiểu im lặng tệ nhất, vì người đọc tưởng mọi thứ đều ổn.
+ *
+ * ⛔ NHƯNG KHÔNG BÁO HẾT MỌI THỨ. Báo hết thì ba ngày sau người dùng tắt thông
+ * báo, và lúc đó nó vô dụng. Ba loại dưới đây CỐ Ý bị bỏ qua:
+ *   · VAO_GIO   — công tắc tự bấm đang TẮT, đúng ý người dùng, không phải lỗi
+ *   · BO_QUA    — khách không phát sinh doanh thu, chuyện thường ngày
+ *   · CHUA_CHAY — hệ quả của một lỗi khác; tin "cả lượt không chạy" đã nói rồi
+ *
+ * ⛔ 'VAO_GIO' đặc biệt nguy hiểm nếu báo nhầm: hàng mới nằm trong giỏ, CHƯA
+ * có hóa đơn nào. Nhắn "đã xuất hóa đơn" cho cảnh ấy là nói dối trắng trợn.
  */
-function nenBao(dong) {
+function loaiTin(dong) {
     const d = dong || {};
-    return chuoi(d.ket_qua) === RA_HOA_DON
-        && Number(d.so_tien) > 0
-        && chuoi(d.ma_khach_hang) !== ''
-        && chuoi(d.ma_lenh) !== '';
+    // Không có mã khách hay mã lệnh thì chống trùng vô nghĩa -> thà bỏ qua.
+    if (!chuoi(d.ma_khach_hang) || !chuoi(d.ma_lenh)) return null;
+    const ket = chuoi(d.ket_qua);
+    if (ket === RA_HOA_DON) return Number(d.so_tien) > 0 ? 'RA' : null;
+    if (ket === 'LOI') return 'LOI';
+    if (ket === 'TREO') return 'TREO';
+    return null;
+}
+
+/** Giữ tên cũ: "có đáng báo không" giờ là "có thuộc loại nào không". */
+function nenBao(dong) {
+    return loaiTin(dong) !== null;
 }
 
 /**
@@ -108,10 +125,19 @@ function soanTin(dong) {
     const ma = chuoi(d.ma_khach_hang);
     const dong1 = ten && ma ? `${ten} (${ma})` : (ten || ma);
 
+    const loai = loaiTin(d);
+    // ⚠️ Dòng ĐẦU quyết định người đọc có mở ra xem hay không. Tin TREO là loại
+    // nguy hiểm nhất — máy đã bấm Xác nhận mà không đọc được kết quả, tiền có
+    // thể đã lên cơ quan thuế — nên nó phải hét lên, không được lẫn với hai
+    // loại kia.
+    const dauDe = loai === 'LOI' ? '❌ KHÔNG xuất được hóa đơn'
+        : loai === 'TREO' ? '⚠️ KHÔNG RÕ đã xuất hóa đơn hay chưa — HÃY KIỂM TRA TENDOO'
+            : '✅ Đã xuất hóa đơn';
+    const nhanTien = loai === 'LOI' ? 'Số tiền định xuất' : 'Số tiền';
     const cac = [
-        '✅ Đã xuất hóa đơn',
+        dauDe,
         `Khách hàng: ${dong1}`,
-        `Số tiền: ${chuTien(d.so_tien)}đ`,
+        `${nhanTien}: ${chuTien(d.so_tien)}đ`,
     ];
     // ── NGÀY SỐ LIỆU: CHỈ HIỆN KHI NÓ KHÁC NGÀY XUẤT ───────────────────────
     //
@@ -141,9 +167,82 @@ function soanTin(dong) {
     if (ngay && ngay !== ngayTrongGio(gio)) cac.push(`Số liệu ngày: ${ngay}`);
     if (gio) cac.push(`Lúc: ${gio}`);
 
+    // Tin thành công thì lý do (nếu có) là cảnh báo phụ — ra dở dang chẳng hạn.
+    // Tin lỗi/treo thì lý do CHÍNH LÀ nội dung, phải gọi đúng tên nó.
     const lyDo = chuoi(d.ly_do);
-    if (lyDo) cac.push(`⚠ ${lyDo}`);
+    if (lyDo) cac.push(loai === 'RA' ? `⚠ ${lyDo}` : `Lý do: ${lyDo}`);
     return cac.join('\n');
+}
+
+/**
+ * Lý do "không chạy" nào là CHUYỆN THƯỜNG NGÀY, không đáng làm phiền.
+ *
+ * ⚠️ KHONG_KHACH_NAO_PHAT_SINH xảy ra gần như MỖI TỐI — khách không mua thì
+ * không có gì để xuất. Báo cái này là mỗi ngày một tin rác, và tin rác thì
+ * giết luôn giá trị của những tin thật.
+ */
+const LY_DO_YEN_A = new Set(['KHONG_KHACH_NAO_PHAT_SINH', 'MOC_KHONG_CO_KHACH']);
+
+/**
+ * Soạn tin CẢ LƯỢT KHÔNG CHẠY.
+ *
+ * ⚠️ VÌ SAO PHẢI CÓ RIÊNG. Lượt 18:10 ngày 21/08/2026 không chạy được vì
+ * «Không gọi được bongtom.store: Failed to fetch» — lý do ấy nằm ở TẦNG LƯỢT,
+ * không dòng khách nào mang nổi. Chỉ báo theo dòng khách thì cả lượt hỏng mà
+ * người dùng KHÔNG NHẬN ĐƯỢC GÌ.
+ */
+function soanTinLuot(banGhi, luc) {
+    const b = banGhi || {};
+    const bo = (b.khach || []).filter(k => k && chuoi(k.ket) === 'CHUA_CHAY');
+    const ten = bo.map(k => chuoi(k.tenKH) || chuoi(k.maKH)).filter(Boolean).slice(0, 5);
+    const cac = ['🚫 Cả lượt KHÔNG chạy' + (chuoi(b.moc) ? ` — mốc ${chuoi(b.moc)}` : '')];
+    cac.push(`Lý do: ${chuoi(b.thongBao) || chuoi(b.lyDo) || 'không rõ'}`);
+    if (bo.length) {
+        cac.push(`Bỏ lỡ: ${bo.length} khách`
+            + (ten.length ? ` (${ten.join(', ')}${bo.length > ten.length ? '…' : ''})` : ''));
+    }
+    const gio = chuGio(luc);
+    // ⚠️ KÈM SỐ HIỆU BẢN. Ngày 22/08/2026 vá bốn đợt trong một ngày; đọc lại
+    // tin cũ mà không biết nó do bản nào sinh ra thì luận bệnh trên cát.
+    if (gio) cac.push(`Lúc: ${gio}` + (chuoi(b.banExt) ? ` · bản ${chuoi(b.banExt)}` : ''));
+    return cac.join('\n');
+}
+
+/** Khoá chống trùng cho tin cả-lượt: mỗi NGÀY + MỐC GIỜ chỉ báo một lần. */
+function maLuot(banGhi) {
+    const b = banGhi || {};
+    const ngay = chuoi(b.ngay && b.ngay.tu) || chuoi(b.ngay) || '';
+    return 'luot-' + ngay + '-' + (chuoi(b.moc) || chuoi(b.lyDo));
+}
+
+/**
+ * Báo CẢ LƯỢT KHÔNG CHẠY. Không bao giờ ném.
+ *
+ * @returns {Promise<{daGui:number, boQua:number, hong:number, ma?:string}>}
+ */
+async function baoLuot({ banGhi, caiDat, kho, layFetch, luc }) {
+    const kq = { daGui: 0, boQua: 0, hong: 0 };
+    try {
+        const b = banGhi || {};
+        const c = caiDat || {};
+        if (!chuoi(c.telegramToken) || !chuoi(c.telegramChatId)) {
+            return { ...kq, ma: 'CHUA_KHAI_BAO' };
+        }
+        // Lượt CÓ chạy thì từng khách đã có tin riêng — không báo thêm gì.
+        if (b.chay !== false) { kq.boQua++; return kq; }
+        if (LY_DO_YEN_A.has(chuoi(b.lyDo))) { kq.boQua++; return kq; }
+
+        const ma = maLuot(b);
+        const nay = Number(luc) || Date.now();
+        if (!(await gianhCho(kho, ma, nay))) { kq.boQua++; return kq; }
+
+        const gui = await guiTin(c, soanTinLuot(b, nay), layFetch);
+        if (gui.ok) kq.daGui++;
+        else { await traCho(kho, ma); kq.hong++; kq.ma = gui.ma; kq.thongBao = gui.thongBao; }
+    } catch (e) {
+        kq.hong++; kq.ma = 'NGOAI_LE'; kq.thongBao = chuoi((e && e.message) || e);
+    }
+    return kq;
 }
 
 // ── SỔ "ĐÃ BÁO" ─────────────────────────────────────────────────────────────
@@ -321,7 +420,7 @@ async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
         const nay = Number(luc) || Date.now();
 
         for (const dong of ds) {
-            if (!nenBao(dong)) { kq.boQua++; continue; }
+            if (!loaiTin(dong)) { kq.boQua++; continue; }
             const ma = chuoi(dong.ma_lenh);
             if (!(await gianhCho(kho, ma, nay))) { kq.boQua++; continue; }
 
@@ -345,7 +444,8 @@ async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
 }
 
 const API = {
-    baoCacDong, soanTin, nenBao, chuGio, chuNgay, ngayTrongGio, donSo,
+    baoCacDong, baoLuot, soanTin, soanTinLuot, maLuot, nenBao, loaiTin,
+    chuGio, chuNgay, ngayTrongGio, donSo, LY_DO_YEN_A,
     gianhCho, traCho, guiTin, guiThu, doChatId, docTraLoi,
     KHOA_SO_DA_BAO, KHOA_TRANG_THAI, GIOI_HAN_SO, NGAY_GIU, MUI_GIO,
 };

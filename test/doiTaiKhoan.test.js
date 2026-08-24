@@ -61,6 +61,10 @@ function trinhDuyetGia({ maCuaHangSauKhiVao = CH_PA, hong = null,
                     if (hong === 'captcha') return { ok: false, ma: 'CAPTCHA', thongBao: 'captcha' };
                     if (hong === 'saiMatKhau') return { ok: false, ma: 'SAI_MAT_KHAU', thongBao: 'Sai mật khẩu' };
                     if (hong === 'khongVePos') return { ok: true };
+                    // Đăng nhập XONG (có token) nhưng cú chuyển hướng của Tendoo
+                    // không tới nơi. Tự mở lại trang thì vào được — đúng cảnh
+                    // khách Trang Bé TB hỏng lúc 18:05 ngày 21/08/2026.
+                    if (hong === 'vePosChamNhungMoLaiDuoc') { coToken = true; return { ok: true }; }
                     coToken = true;
                     url = 'https://seller-v3.tendoo.vn/sales/pos';
                     if (canTaiLaiMoiCoMa) coMaExtension = false;
@@ -384,6 +388,20 @@ test('đăng nhập xong mà không quay lại trang bán hàng → DỪNG', asy
     const td = trinhDuyetGia({ hong: 'khongVePos' });
     const kq = await DoiTK.taoBoDoiTaiKhoan(td.boi).doiSang(7, tkPA);
     assert.strictEqual(kq.ma, MA.KHONG_QUAY_LAI_POS);
+    assert.match(kq.thongBao, /đã thử tự mở lại trang một lần/,
+        'không nói là đã thử lại: ' + kq.thongBao);
+});
+
+test('⭐⭐ chuyển hướng không tới nơi → TỰ MỞ LẠI TRANG, cứu được cả khách', async () => {
+    // ⚠️ CA HỎNG THẬT 21/08/2026, mốc 18:05: khách Trang Bé TB (8.795.000đ) mất
+    // trắng vì «Đăng nhập xong nhưng không quay lại được trang bán hàng». Đăng
+    // nhập ĐÃ THÀNH CÔNG; chỉ là cú chuyển hướng của Tendoo không tới nơi.
+    //
+    // ⚠️ AN TOÀN: chỗ này nằm TRƯỚC MỌI THAO TÁC VỚI GIỎ — chưa bỏ món nào,
+    // chưa bấm Thanh toán, chưa có tờ hóa đơn nào tồn tại.
+    const td = trinhDuyetGia({ hong: 'vePosChamNhungMoLaiDuoc' });
+    const kq = await DoiTK.taoBoDoiTaiKhoan(td.boi).doiSang(7, tkPA);
+    assert.strictEqual(kq.ok, true, 'thông báo: ' + kq.thongBao);
 });
 
 ghiChu('— ⛔ Cửa chặn cuối: vào rồi vẫn phải đúng cửa hàng —');

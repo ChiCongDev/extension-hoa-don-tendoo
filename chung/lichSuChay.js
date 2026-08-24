@@ -121,6 +121,11 @@ function taoBanGhi(d = {}) {
 
     return {
         luc: d.luc || Date.now(),
+        // ⚠️ SỐ HIỆU BẢN ĐANG CHẠY. Ngày 22/08/2026 tôi vá bốn đợt trong một
+        // ngày, rồi đọc log lượt 22:33 mà KHÔNG xác định nổi nó chạy 2.21.0,
+        // 2.22.0 hay 2.23.0 — trong khi điều đó đổi hẳn cách luận bệnh. Đoán
+        // "lúc ấy máy chạy mã nào" là đoán cả nền móng của mọi kết luận sau đó.
+        banExt: chuoi(d.banExt),
         nguon: d.nguon || NGUON.HEN_GIO,
         moc: chuoi(d.moc),
         ngay: d.ngay || null,
@@ -129,6 +134,34 @@ function taoBanGhi(d = {}) {
         thongBao: chuoi(d.thongBao),
         khach, dem,
     };
+}
+
+/**
+ * LƯỢT NÀY CÓ THẬT SỰ BẮT TAY VÀO LÀM KHÔNG?
+ *
+ * ⚠️ VÌ SAO PHẢI GOM VÀO ĐÂY. Lối hẹn giờ từng đóng đinh `chay: true` rồi vứt
+ * luôn `ly_do`/`thongBao` của hàng đợi. Hậu quả ngày 22/08/2026, mốc 14:41:
+ * cầu nối bỏ cuộc ở TẦNG LƯỢT (giỏ còn sót hàng, chưa đụng tới khách nào),
+ * nhưng bản ghi vẫn khai là "đã chạy". Bảng lịch sử hiện trơ "1 chưa chạy tới"
+ * KHÔNG kèm một chữ lý do, và `baoLuot()` có cửa `if (b.chay !== false) return`
+ * nên Telegram im lặng nốt. Cả lượt hỏng mà người dùng không nhận được gì.
+ *
+ * ⚠️ ĐẾM CẢ `loi` VÀ `treo`, KHÔNG CHỈ `xong`. Lượt làm được một khách rồi mới
+ * dừng thì vẫn là CÓ chạy: khách ấy đã có tin Telegram riêng, bắn thêm tin "cả
+ * lượt KHÔNG chạy" là báo sai. Lối chạy tay trước đây chỉ đếm `xong` nên dính
+ * đúng chỗ này — giờ hai lối dùng chung một luật.
+ *
+ * ⚠️ KHÔNG CÓ KẾT QUẢ -> COI LÀ KHÔNG CHẠY. Hàng đợi luôn trả về một đối tượng;
+ * không có nghĩa là có chuyện bất thường, mà bất thường thì phải KÊU chứ không
+ * được lặng lẽ khai là đã chạy.
+ */
+function daChay(ketQua) {
+    // ⚠️ Mảng cũng là object. Một cái mảng lọt vào đây sẽ không có `dung`, và
+    // `!undefined` là true -> khai bừa là ĐÃ CHẠY. Đúng kiểu im lặng đang sửa.
+    if (!ketQua || typeof ketQua !== 'object' || Array.isArray(ketQua)) return false;
+    const dem = (t) => (Array.isArray(ketQua[t]) ? ketQua[t].length : 0);
+    if (dem('xong') + dem('loi') + dem('treo') > 0) return true;
+    return !ketQua.dung;
 }
 
 /**
@@ -154,7 +187,7 @@ function tomTat(b) {
     return p.length ? p.join(' · ') : 'không có khách nào';
 }
 
-const API = { taoBanGhi, themVao, tomTat, KET, NHAN, NGUON, KHOA, GIOI_HAN_MAC_DINH };
+const API = { taoBanGhi, themVao, tomTat, daChay, KET, NHAN, NGUON, KHOA, GIOI_HAN_MAC_DINH };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_LichSuChay = API;
 

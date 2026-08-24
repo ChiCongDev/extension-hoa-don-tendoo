@@ -779,6 +779,32 @@ function nhieuBanGhi(n) {
 
 const demBanGhi = (o) => o.querySelectorAll('.hdt-ls').length;
 
+test('⭐⭐ mỗi dòng lịch sử phải HIỆN RA nó do bản nào sinh ra', async () => {
+    // ⚠️ Ngày 22/08/2026 vá bốn đợt trong một ngày. Nhìn dòng lịch sử 22:33 mà
+    // không biết nó chạy 2.21 hay 2.23 thì mọi kết luận sau đó đều xây trên cát.
+    // Ghi vào bản ghi thôi chưa đủ — người dùng phải NHÌN THẤY được.
+    const { tailieu } = dungTrang({ caiDat: {} });
+    const o = tailieu.createElement('div');
+    tailieu.body.appendChild(o);
+    ChenCot.veTrangLichSu(tailieu, o, [LSC.taoBanGhi({
+        banExt: '2.24.0', nguon: 'HEN_GIO', moc: '22:33', luc: 1786000000000,
+        chay: false, lyDo: 'X', thongBao: 'giỏ còn hàng', trongLich: [],
+    })], 1);
+    assert.match(o.querySelector('.hdt-ls').textContent, /bản 2\.24\.0/,
+        'không hiện số hiệu bản: ' + o.querySelector('.hdt-ls').textContent);
+});
+
+test('⛔ không có số hiệu thì đừng vẽ chữ "bản" trống trơ', async () => {
+    const { tailieu } = dungTrang({ caiDat: {} });
+    const o = tailieu.createElement('div');
+    tailieu.body.appendChild(o);
+    ChenCot.veTrangLichSu(tailieu, o, [LSC.taoBanGhi({
+        nguon: 'HEN_GIO', moc: '22:33', luc: 1786000000000, chay: true, trongLich: [],
+    })], 1);
+    assert.doesNotMatch(o.querySelector('.hdt-ls').textContent, /bản/,
+        'vẽ chữ "bản" mà không có số hiệu nào');
+});
+
 test('⭐ đúng 10 bản ghi mỗi trang', async () => {
     const { tailieu } = dungTrang({ caiDat: {} });
     const o = tailieu.createElement('div');

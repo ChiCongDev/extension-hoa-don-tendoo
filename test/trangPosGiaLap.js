@@ -92,6 +92,12 @@ function theHang(sp, chiSo) {
 /**
  * @param {object} [tuyChon]
  *   - tongBangXn         ép tổng TRONG BẢNG lệch với giỏ (thử chốt chặn số 7)
+ *   - bangXnMoi         BẢNG XÁC NHẬN KIỂU 23/08/2026 (ảnh chụp thật):
+ *                          · nhãn ô nhập đổi "Khách đã đưa" -> "Khách thanh toán"
+ *                          · "Ghi nợ" từ CÔNG TẮC GẠT thành Ô TICK VUÔNG
+ *                          · chân bảng KHÔNG còn nút "Quay lại", chỉ có "Hủy"
+ *                        Một ô nhập không điền được đã kéo theo cả ba tầng hỏng
+ *                        của lượt 10:45 ngày 23/08/2026.
  *   - ghiNoBat           bảng mở ra với công tắc Ghi nợ đang BẬT
  *   - khongMoBang        bấm Thanh toán mà bảng không hiện (giao diện đổi)
  *   - giuGioSauXacNhan   bấm Xác nhận xong giỏ vẫn còn hàng (ca KHÔNG RÕ)
@@ -107,6 +113,16 @@ function theHang(sp, chiSo) {
  *   - nutTtMoSauMs      nút Thanh toán khóa lúc đầu rồi MỞ sau N mili-giây — đúng
  *                        cảnh React vẽ lại chân trang chậm hơn giỏ một nhịp, thứ
  *                        đã làm hai khách mất trắng ngày 21/08/2026.
+ *   - giaoDienMoi       GIAO DIỆN MỚI 22/08/2026: dòng giỏ có HAI cột tiền — "Giá
+ *                        bán" và "Thành tiền" — còn chân giỏ MẤT SẠCH NHÃN, chỉ còn
+ *                        biểu tượng giỏ và con số. Không còn chữ "Tổng thanh toán"
+ *                        nào để dò. Dùng KÈM khongCoDongTong để dựng đủ cảnh.
+ *   - nhanTongBang      ĐỔI CHỮ của dòng tổng trong BẢNG XÁC NHẬN. Ngày 22/08/2026
+ *                        Tendoo bỏ chữ "Tổng cộng" và máy dừng ở chốt cuối cùng
+ *                        trước khi ra tiền thật. Đặt 'Phải thu' để dựng lại giao
+ *                        diện mới, hay một chữ lạ hoắc để xem máy có chịu dừng.
+ *   - thanhTienSai      thành tiền KHÔNG bằng giá × số lượng. Máy phải DỪNG chứ
+ *                        không đoán — đây là chốt chặn của phép cộng theo dòng.
  *   - coNutMoCa          trang có nút "Mở ca" (ca bán hàng đang ĐÓNG). Tendoo khóa
  *                        nút Thanh toán tới khi ca được mở; chờ bao lâu cũng vô ích.
  *   - thaoBangXn         React THÁO HẲN bảng xác nhận khỏi trang sau khi điền "Khách
@@ -178,9 +194,35 @@ function theHang(sp, chiSo) {
  *                        rồi kết luận "trang đã nhảy sang giao diện mới" và dừng.
  *   - khongCoDongTong    chân giỏ có, NHƯNG thiếu hẳn dòng "Tổng thanh toán"
  *                        (giao diện Tendoo đổi chữ) — máy phải báo lỗi, không đoán số.
+ *   - kieuNutXoa        HÌNH DẠNG nút xóa dòng giỏ. Ảnh chụp trang thật 22/08/2026
+ *                        cho thấy thùng rác màu XÁM, tức nhiều khả năng KHÔNG mang
+ *                        lớp "dangerous" nữa. Ba kiểu:
+ *                          'dangerous'  — như cũ, có lớp nguy hiểm (mặc định)
+ *                          'bieuTuong'  — không lớp, không nhãn, CHỈ có anticon-delete
+ *                          'voDanh'     — không lớp, không nhãn, không cả biểu tượng:
+ *                                         máy PHẢI chịu thua và KỂ RA mình thấy gì
+ *                          'hinhThat'   — ĐÚNG DOM THẬT ngày 23/08/2026, chép từ lời
+ *                                         khai của xoaSachGio: nút sửa giá «990.000»,
+ *                                         nút nhân bản và thùng rác đều là <svg><path>
+ *                                         thô — không lớp "dangerous", không title,
+ *                                         không tên biểu tượng của thư viện nào.
+ *                          'tooltip'    — như thật 22/08: chữ "Xóa sản phẩm" chỉ hiện
+ *                                         trong Ant Tooltip ở GÓC KHÁC của trang, nút
+ *                                         thì trơ, chỉ có anticon-delete
+ *   - hoaDonDienTu      CÔNG TẮC "Hóa đơn điện tử" ở chân giỏ (giao diện 22/08/2026).
+ *                        Ảnh chụp trang thật cho thấy nó QUYẾT ĐỊNH nút đỏ làm gì:
+ *                          BẬT -> nút ghi "Thanh toán & Xuất hóa đơn (F1)"
+ *                          TẮT -> nút ghi "Thanh toán (F1)", và bấm thì đơn VẪN
+ *                                 chốt nhưng KHÔNG xuất hóa đơn nào.
+ *                        Nhận: true (bật) · false (tắt) · 'khong' (trang không có
+ *                        công tắc — giao diện cũ). Mặc định: giao diện mới thì có
+ *                        và BẬT, giao diện cũ thì không có.
+ *   - chanGioLech       ÉP con số ở chân giỏ lệch khỏi tổng các dòng. Ảnh trang thật
+ *                        22/08/2026: chân giỏ ghi 2.300.000 trong khi giỏ chỉ có một
+ *                        dòng 1.450.000. Một trong hai sai — máy phải DỪNG.
  */
 function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
-                       ghiNoBat = false, khongMoBang = false,
+                       ghiNoBat = false, khongMoBang = false, bangXnMoi = false,
                        giuGioSauXacNhan = false, giuBangSauXacNhan = false, bangThue = false,
                        khongDienSanDaDua = false, doiTongKhiDien = false,
                        thueLuonChan = false, thueKhongDong = false, nuotCuBamDau = 0,
@@ -188,6 +230,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        goiYTreMs = 0, donViLa = '', boQuaNLanTim = 0,
                        veLaiBangXn = false, thaoBangXn = false, chanCuBamXn = false,
                        nutTtKhoa = false, nutTtMoSauMs = 0, coNutMoCa = false,
+                       giaoDienMoi = false, thanhTienSai = false, nhanTongBang = null,
                        nutTtThayMoiSauMs = 0,
                        xacNhanQuayMs = 0, xacNhanNuot = false,
                        xacNhanBaoLoi = '',
@@ -196,7 +239,11 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        nangCapVangNutMs = 0,
                        themGapDoi = false, tongTreMs = 0,
                        khongCoDongTong = false, oSoLuongNhanGo = false,
+                       kieuNutXoa = 'dangerous', chanGioLech = null, hoaDonDienTu,
                        chanTangTai = 0 } = {}) {
+    // 'khong' | true | false — xem chú thích `hoaDonDienTu`.
+    const hddt = hoaDonDienTu === undefined ? (giaoDienMoi ? true : 'khong') : hoaDonDienTu;
+    const hddtBat = hddt === true;
     const dom = new JSDOM(`<!doctype html><body>
       <div class="pos">
         <div class="thanh-tren">
@@ -213,11 +260,19 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                  placeholder="Tìm tên, SĐT, mã số thuế (ALT+C / Option+C)">
           <div id="cacDongGio"></div>
           <div class="border-t pt-2 border-neutral-200" id="chanGio">
+            ${hddt === 'khong' ? '' : `<div id="dongHddt" class="flex items-center gap-2">
+              <button type="button" role="switch" aria-checked="${hddtBat}"
+                class="ant-switch${hddtBat ? ' ant-switch-checked' : ''}"><span
+                class="ant-switch-handle"></span></button>
+              <span>Hóa đơn điện tử</span>
+              ${hddtBat ? '<span>Tự động phát hành sau 22:00</span><a>Xem trước</a>' : ''}
+            </div>`}
             <div id="dongTongSp">Tổng <span id="soMon">0</span> sản phẩm : <span id="tongSp">0</span> đ</div>
             <div id="dongTongTt">Tổng thanh toán: <span id="tongTt">0</span> đ</div>
             <div class="flex gap-2 flex-wrap">
               <button id="nutLuuDon" class="ant-btn">Lưu đơn (F2)</button>
-              <button id="nutThanhToan" class="ant-btn">Thanh toán (F1)</button>
+              <button id="nutThanhToan" class="ant-btn">${hddtBat
+                ? 'Thanh toán &amp; Xuất hóa đơn (F1)' : 'Thanh toán (F1)'}</button>
             </div>
           </div>
         </div>
@@ -310,13 +365,18 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                 </div>
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-base font-medium">Khách đã đưa</span>
+                <span class="text-base font-medium">${bangXnMoi
+                  ? 'Khách thanh toán' : 'Khách đã đưa'}</span>
                 <input class="ant-input" type="text" id="xnKhachDua" value="0">
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-base font-medium">Ghi nợ</span>
-                <button type="button" role="switch" aria-checked="false"
-                        class="ant-switch" id="xnGhiNo"><div class="ant-switch-handle"></div></button>
+                ${bangXnMoi ? '' : '<span class="text-base font-medium">Ghi nợ</span>'}
+                ${bangXnMoi
+                  ? '<label class="ant-checkbox-wrapper"><span class="ant-checkbox">'
+                    + '<input type="checkbox" class="ant-checkbox-input" id="xnGhiNo">'
+                    + '</span><span>Ghi nợ</span></label>'
+                  : '<button type="button" role="switch" aria-checked="false"'
+                    + ' class="ant-switch" id="xnGhiNo"><div class="ant-switch-handle"></div></button>'}
                 <span class="text-base font-medium text-green-500">Đủ tiền</span>
               </div>
               <label class="ant-radio-wrapper ant-radio-wrapper-checked">
@@ -330,7 +390,8 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             </div>
             <div class="ant-modal-footer" style="display: flex; justify-content: flex-end;">
               <div class="flex gap-2 items-center">
-                <button type="button" class="ant-btn ant-btn-default" id="xnQuayLai"><span>Quay lại</span></button>
+                <button type="button" class="ant-btn ant-btn-default" id="xnQuayLai"><span>${bangXnMoi
+                  ? 'Hủy' : 'Quay lại'}</span></button>
                 <button type="button" class="ant-btn ant-btn-primary" id="xnXacNhan"><span>Xác nhận</span></button>
               </div>
             </div>
@@ -356,6 +417,50 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                     nangCapDong: 0, nangCapDoiNgay: 0 };
 
     const timSp = (ten, gia) => hang.find(h => h.ten === ten && (gia == null || h.gia === gia));
+
+    /**
+     * NÚT XÓA của một dòng giỏ, ba kiểu — xem chú thích `kieuNutXoa`.
+     *
+     * ⚠️ Lớp "xoa" giữ nguyên ở CẢ BA kiểu: trang giả cần chỗ bám để tự bấm,
+     * còn mã thật KHÔNG BAO GIỜ được dùng lớp ấy để nhận nút — Tendoo đâu có
+     * đặt tên lớp bằng tiếng Việt.
+     */
+    const nutXoaDong = () => {
+        const chung = 'xoa ant-btn ant-btn-text ant-btn-sm ant-btn-icon-only';
+        if (kieuNutXoa === 'voDanh') return `<button class="${chung}"></button>`;
+        // ⚠️ DOM THẬT 23/08/2026. Ba nút không chữ nằm cạnh nhau, phân biệt được
+        // với nhau CHỈ BẰNG HÌNH VẼ. Nút «990.000» là nút SỬA GIÁ — bấm nhầm
+        // vào nó ngay trước khi xuất hóa đơn là sai tiền trên tờ hóa đơn thuế.
+        // (Nút sửa giá ngoài đời nằm ở cột giá; đặt chung khối ở đây vì bộ dò
+        // quét MỌI nút trong dòng, nên vị trí không đổi được kết quả.)
+        if (kieuNutXoa === 'hinhThat') {
+            const ve = (...d) => '<svg>' + d.map(x => `<path d="${x}"></path>`).join('') + '</svg>';
+            const AB = 'ant-btn css-1rtpktv css-var-_r_1_ ant-btn-text ant-btn-color-default';
+            return `<button class="${AB}">990.000${ve('M7.97606 1.82159L8.9', 'M5.16602 11.168H9.16')}</button>`
+                + `<button class="nhanBan ${AB}">${ve('M6 10C6 8.11438 6 7.11157 6.58579 6.52579',
+                    'M11.3339 5.9987C11.3339 4.11308 11.3339 3.17027')}</button>`
+                + `<button class="xoa ${AB}">${ve('M13 3.66406L12.5868 10.4451',
+                    'M2 3.66536L14 3.66536', 'M6.33398 11L6.33398 7')}</button>`;
+        }
+        // ⚠️ ẢNH CHỤP TRANG THẬT 22/08/2026: rê chuột lên thùng rác thì hiện chữ
+        // "Xóa sản phẩm". Nhưng Ant Design vẽ Tooltip Ở MỘT GÓC KHÁC của trang,
+        // KHÔNG đặt title/aria-label lên nút. Nên chữ ấy nhìn thấy được bằng mắt
+        // mà mã KHÔNG với tới — chỉ còn tên biểu tượng để bám.
+        if (kieuNutXoa === 'tooltip') {
+            return `<button class="${chung}"><span role="img" class="anticon anticon-delete">`
+                + '<svg viewBox="64 64 896 896" data-icon="delete" fill="currentColor">'
+                + '<path d="M292.7 840h438.6l24.2-512h-487z"></path></svg></span></button>'
+                + '<div class="ant-tooltip"><div class="ant-tooltip-inner" role="tooltip">'
+                + 'Xóa sản phẩm</div></div>';
+        }
+        if (kieuNutXoa === 'bieuTuong') {
+            return `<button class="${chung}"><span role="img" class="anticon anticon-delete">`
+                + '<svg viewBox="64 64 896 896" data-icon="delete" fill="currentColor">'
+                + '<path d="M292.7 840h438.6l24.2-512h-487z"></path></svg></span></button>';
+        }
+        return `<button class="${chung} ant-btn-dangerous ant-btn-color-dangerous `
+            + 'ant-btn-variant-text"></button>';
+    };
 
     /**
      * DÒNG GIỎ — dựng theo ĐÚNG bản chụp thật (test/mau/gioHangThat.html,
@@ -406,11 +511,12 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
               </div>
               <div class="flex items-center gap-2 flex-1">
                 <div class="flex-1 text-right">
-                  <div class="tien text-blue-700 font-semibold">${tien(d.sp.gia * d.soLuong)}</div>
+                  ${giaoDienMoi ? '<div class="giaBan">' + tien(d.sp.gia) + '</div>' : ''}
+                  <div class="tien text-blue-700 font-semibold">${tien(d.sp.gia * d.soLuong + (thanhTienSai ? 7 : 0))}</div>
                 </div>
                 <div class="flex items-center">
                   <button title="Tách dòng (SL=1)" class="tach ant-btn ant-btn-text ant-btn-color-default ant-btn-sm ant-btn-icon-only"></button>
-                  <button class="xoa ant-btn ant-btn-text ant-btn-dangerous ant-btn-color-dangerous ant-btn-variant-text ant-btn-sm ant-btn-icon-only"></button>
+                  ${nutXoaDong()}
                 </div>
               </div>
             </div>
@@ -444,6 +550,13 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         // đọc một phát rồi kết luận oan là món không vào giỏ.
         if (tongTreMs > 0) setTimeout(() => dat('tongTt', tien(tong)), tongTreMs);
         else dat('tongTt', tien(tong));
+        // ÉP chân giỏ lệch — dựng lại đúng mâu thuẫn thấy trên trang thật 22/08:
+        // chân giỏ 2.300.000 trong khi giỏ chỉ có một dòng 1.450.000. Đặt SAU
+        // mọi phép gán ở trên, nếu không nó bị ghi đè ngay và test xanh giả.
+        if (chanGioLech != null) {
+            dat('tongTt', tien(chanGioLech));
+            dat('tongSp', tien(chanGioLech));
+        }
 
         boc.querySelectorAll('[data-dong]').forEach((khoi) => {
             const i = Number(khoi.dataset.dong);
@@ -559,6 +672,14 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         td.querySelector('.thanh-tren').appendChild(n);
     }
 
+    // ⚠️ 22/08/2026 Tendoo bỏ chữ "Tổng cộng" khỏi bảng xác nhận. Bản giả phải
+    // dựng được cảnh ấy, nếu không thì chốt cuối cùng chẳng bao giờ được kiểm.
+    if (nhanTongBang) {
+        const o = [...td.querySelectorAll('#bangXacNhan *')]
+            .find(e => !e.children.length && /Tổng cộng/i.test(e.textContent || ''));
+        if (o) o.textContent = String(o.textContent).replace(/Tổng cộng/gi, nhanTongBang);
+    }
+
     const oTim = td.getElementById('oTimSanPham');
     oTim.addEventListener('input', (su) => {
         // Ô nuốt chữ: React ghi đè lại rỗng ngay sau khi gõ. Bản giả phải dựng
@@ -606,6 +727,8 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                 const so = Number(String(oDua.value).replace(/[^\d]/g, '')) || 0;
                 const ct = td.getElementById('xnGhiNo');
                 const thieu = so < tong;
+                // Bảng 23/08/2026 dùng Ô TICK; bảng cũ dùng công tắc gạt.
+                if (ct.type === 'checkbox') { ct.checked = thieu; return; }
                 ct.setAttribute('aria-checked', thieu ? 'true' : 'false');
                 ct.className = thieu ? 'ant-switch ant-switch-checked' : 'ant-switch';
             };
@@ -799,8 +922,13 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
 
     if (ghiNoBat) {
         const ct = td.getElementById('xnGhiNo');
-        ct.setAttribute('aria-checked', 'true');
-        ct.className = 'ant-switch ant-switch-checked';
+        // Bảng 23/08/2026 dùng Ô TICK; bảng cũ dùng công tắc gạt.
+        if (ct.type === 'checkbox') {
+            ct.checked = true;
+        } else {
+            ct.setAttribute('aria-checked', 'true');
+            ct.className = 'ant-switch ant-switch-checked';
+        }
     }
 
     for (const g of gioBanDau) {

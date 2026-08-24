@@ -438,12 +438,34 @@ async function ghiLichSu(banGhi) {
     try {
         await baoTelegram(self.HDT_DayVeSell.goiTuBanGhi(banGhi));
     } catch (e) { /* cố ý nuốt */ }
+
+    // ⚠️ TIN CẢ LƯỢT KHÔNG CHẠY. Lý do nằm ở TẦNG LƯỢT chứ không ở dòng khách
+    // nào — lượt 18:10 ngày 21/08/2026 hỏng vì «Không gọi được bongtom.store»,
+    // và không một dòng khách nào mang nổi câu ấy. Chỉ báo theo dòng khách thì
+    // cả lượt hỏng mà người dùng KHÔNG NHẬN ĐƯỢC GÌ.
+    try {
+        const c = await khoCaiDat.doc();
+        const kq = await self.HDT_BaoTelegram.baoLuot({
+            banGhi, caiDat: c, kho: khoDaBaoTg(), luc: Date.now(),
+        });
+        if (kq.daGui || kq.hong) {
+            await chrome.storage.local.set({
+                [self.HDT_BaoTelegram.KHOA_TRANG_THAI]: { luc: Date.now(), ...kq },
+            });
+        }
+    } catch (e) { /* cố ý nuốt — việc phụ, không được làm hỏng lần chạy */ }
 }
 
 /** Ghi CẢ HAI: ô "lần gần nhất" và một bản ghi lịch sử đầy đủ. */
+/** Số hiệu bản extension đang chạy. Không hỏi được thì để trống, đừng bịa. */
+function banDangChay() {
+    try { return String(chrome.runtime.getManifest().version || ''); } catch (e) { return ''; }
+}
+
 async function ghiKetQuaVaLichSu(o, trongLich) {
     await ghiKetQuaHen(o);
     await ghiLichSu(self.HDT_LichSuChay.taoBanGhi({
+        banExt: banDangChay(),
         nguon: o.nguon || self.HDT_LichSuChay.NGUON.HEN_GIO,
         moc: o.moc, ngay: o.ngay, chay: o.chay, lyDo: o.lyDo, thongBao: o.thongBao,
         trongLich: trongLich || [], thieu: o.thieu, ketQua: o.ketQua,
@@ -553,8 +575,15 @@ async function chayTheoHen(moc) {
     const cn = await dungCauNoi();
     // Gửi sang Sell NGAY sau mỗi khách, không đợi hết loạt.
     const tra = await cn.taoHoaDon(dsChay, taoMocDaySell(bang.ngay && bang.ngay.tu));
-    await ghiKetQuaVaLichSu({ moc, chay: true, thieu, ngay: bang.ngay,
-                              soKhach: dsChay.length, ketQua: tra }, trongLich);
+    // ⚠️ KHÔNG được đóng đinh `chay: true`. Cầu nối có năm đường bỏ cuộc ở TẦNG
+    // LƯỢT (đang chạy dở, không có tab, tab chưa sẵn sàng, giao diện lạ, giỏ còn
+    // hàng) — cả năm đều trả về TRƯỚC khi đụng tới khách nào. Khai là "đã chạy"
+    // thì lý do bị vứt, bảng hiện trơ "chưa chạy tới", Telegram không báo gì.
+    await ghiKetQuaVaLichSu({
+        moc, chay: self.HDT_LichSuChay.daChay(tra),
+        lyDo: (tra && tra.ly_do) || '', thongBao: (tra && tra.thongBao) || '',
+        thieu, ngay: bang.ngay, soKhach: dsChay.length, ketQua: tra,
+    }, trongLich);
     dongTabNeuTuMo(tab);
 }
 
@@ -685,8 +714,9 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
             }))
             .then(async (kq) => {
                 await ghiLichSu(self.HDT_LichSuChay.taoBanGhi({
+                    banExt: banDangChay(),
                     nguon: self.HDT_LichSuChay.NGUON.TAY,
-                    chay: !(kq && kq.dung && !((kq.xong || []).length)),
+                    chay: self.HDT_LichSuChay.daChay(kq),
                     lyDo: (kq && kq.ly_do) || '', thongBao: (kq && kq.thongBao) || '',
                     trongLich: dsTay, ketQua: kq,
                 }));
@@ -775,6 +805,31 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
             .then(c => taoHamGui(c)([{ ngay: '', ma_khach_hang: '', so_tien: 0 }]))
             .then(kq => traLoi({ ok: !!kq.ok, ...kq }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
+        return true;
+    }
+
+    // Màn khai báo bấm "Chụp giao diện POS" — nhờ tab Tendoo kể lại nó thấy gì.
+    //
+    // ⛔ CHỈ ĐỌC. Tin này không bấm gì trên trang bán hàng.
+    if (tin.loai === 'hdt-chup-giao-dien') {
+        (async () => {
+            try {
+                const cac = await chrome.tabs.query({ url: 'https://seller-v3.tendoo.vn/*' });
+                const tab = (cac || [])[0];
+                if (!tab) {
+                    traLoi({ ok: false, thongBao: 'Chưa mở tab Tendoo nào. Hãy mở trang bán hàng '
+                        + '(seller-v3.tendoo.vn/sales/pos) rồi bấm lại.' });
+                    return;
+                }
+                const tra = await guiTab(tab.id, { loai: 'hdt-chup-giao-dien', tuyChon: {} });
+                traLoi(tra && tra.ok ? tra : {
+                    ok: false, thongBao: (tra && tra.thongBao)
+                        || 'Tab Tendoo không trả lời — hãy tải lại trang bán hàng rồi thử lại.',
+                });
+            } catch (e) {
+                traLoi({ ok: false, thongBao: String((e && e.message) || e) });
+            }
+        })();
         return true;
     }
 

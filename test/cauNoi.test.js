@@ -300,22 +300,33 @@ test('tab chưa sẵn sàng → KHÔNG xếp lệnh nào vào sổ', async () =>
         'đã tạo lệnh trong sổ dù chưa gửi được — sổ sẽ đầy rác');
 });
 
-test('hỏi sẵn sàng TRƯỚC, chỉ hỏi đúng một lần cho cả loạt', async () => {
-    let soLanHoi = 0;
-    const so = SoGhiDau.taoSo(luuTruTam());
-    await so.nap();
-    const cn = CauNoi.taoCauNoi({
-        so,
-        hangDoi: HangDoi.taoHangDoi({ so, khoaLuuTru: luuTruTam(), mayId: 'm',
-                                      tuyChon: { nguNghi: async () => {}, ngauNhien: () => 0 } }),
-        timTabTendoo: async () => ({ id: 7 }),
-        guiToiTab: async (tabId, tin) => {
-            if (tin.loai === CauNoi.LOAI_TIN.HOI_SAN_SANG) { soLanHoi++; return { sanSang: true }; }
-            return { ok: true, ketQua: { tong: 1 } };
-        },
-    });
-    await cn.taoHoaDon([khach('A', 1), khach('B', 1), khach('C', 1)]);
-    assert.strictEqual(soLanHoi, 1, 'hỏi sẵn sàng nhiều lần thừa');
+test('hỏi sẵn sàng TRƯỚC cả loạt — số lần hỏi KHÔNG tăng theo số khách', async () => {
+    // ⚠️ Ý THẬT của bài này là "đừng hỏi lại cho TỪNG KHÁCH", chứ không phải
+    // "đúng một lần". Bản cũ chốt cứng con số 1, nên khi thêm một cú hỏi lại để
+    // xác nhận giỏ (vá 22/08/2026) nó đỏ lên vì CHÍNH BẢN VÁ — đỏ sai lý do.
+    // Giờ đo đúng cái bất biến: chạy 1 khách và 5 khách phải tốn NHƯ NHAU.
+    const demVoi = async (soKhach) => {
+        let soLanHoi = 0;
+        const so = SoGhiDau.taoSo(luuTruTam());
+        await so.nap();
+        const cn = CauNoi.taoCauNoi({
+            so,
+            hangDoi: HangDoi.taoHangDoi({ so, khoaLuuTru: luuTruTam(), mayId: 'm',
+                                          tuyChon: { nguNghi: async () => {}, ngauNhien: () => 0 } }),
+            nghi: async () => {},
+            timTabTendoo: async () => ({ id: 7 }),
+            guiToiTab: async (tabId, tin) => {
+                if (tin.loai === CauNoi.LOAI_TIN.HOI_SAN_SANG) { soLanHoi++; return { sanSang: true }; }
+                return { ok: true, ketQua: { tong: 1 } };
+            },
+        });
+        await cn.taoHoaDon(Array.from({ length: soKhach }, (_, i) => khach('K' + i, 1)));
+        return soLanHoi;
+    };
+    const it = await demVoi(1);
+    const nhieu = await demVoi(5);
+    assert.strictEqual(it, nhieu, `hỏi ${it} lần với 1 khách nhưng ${nhieu} lần với 5 khách`);
+    assert.ok(nhieu <= 2, 'hỏi sẵn sàng quá nhiều lần cho một loạt: ' + nhieu);
 });
 
 ghiChu('— Giỏ phải trống trước khi bắt đầu —');
@@ -370,6 +381,100 @@ test('trang không báo được trạng thái giỏ → vẫn cho chạy (tần
     });
     const kq = await cn.taoHoaDon([khach('PA', 1000000)]);
     assert.strictEqual(kq.dung, false);
+    assert.strictEqual(daGui.length, 1);
+});
+
+
+ghiChu('— ⭐⭐⭐ ĐỌC GIỎ MỘT LẦN LÀ KHÔNG ĐỦ (ca 21:20 ngày 22/08/2026) —');
+
+/** Bộ dựng cho phép mỗi lần hỏi sẵn sàng trả lời KHÁC nhau. */
+async function dungNhieuCauTraLoi(cacCauTraLoi) {
+    const luuSo = luuTruTam();
+    const so = SoGhiDau.taoSo(luuSo);
+    await so.nap();
+    const daGui = [];
+    const daDonGio = [];
+    const daNghi = [];
+    let lan = 0;
+    const cn = CauNoi.taoCauNoi({
+        so,
+        hangDoi: HangDoi.taoHangDoi({ so, khoaLuuTru: luuTruTam(), mayId: 'm',
+                                      tuyChon: { nguNghi: async () => {}, ngauNhien: () => 0 } }),
+        // ⚠️ GHI LẠI ĐỘ DÀI NHỊP. Bộ dựng thay `nghi` bằng hàm rỗng cho test
+        // chạy nhanh — nhưng thế thì "có chờ" và "chờ 0ms" trông y hệt nhau, và
+        // gài lỗi `cho(0)` sẽ XANH. Ghi lại thì đo được.
+        nghi: async (ms) => { daNghi.push(Number(ms) || 0); },
+        timTabTendoo: async () => ({ id: 7, url: 'https://seller-v3.tendoo.vn/sales/pos' }),
+        guiToiTab: async (tabId, tin) => {
+            if (tin.loai === CauNoi.LOAI_TIN.HOI_SAN_SANG) {
+                const t = cacCauTraLoi[Math.min(lan, cacCauTraLoi.length - 1)];
+                lan++;
+                if (lan === 1) daNghi.length = 0;   // chỉ đo phần GIỮA hai cú hỏi
+                return t;
+            }
+            if (tin.loai === CauNoi.LOAI_TIN.DON_GIO) {
+                daDonGio.push(tabId);
+                return { ok: false, ma: 'GIO_LA', daXoa: 0,
+                         thongBao: 'Giỏ hàng trên tab Tendoo đang có 2 món KHÔNG PHẢI do máy bỏ vào.' };
+            }
+            daGui.push(tin);
+            return { ok: true, ketQua: { tong: tin.lenh.soTien } };
+        },
+    });
+    return { cn, so, daGui, daDonGio, daNghi, soLanHoi: () => lan };
+}
+
+const TRONG = { sanSang: true, thieu: [], gioTrong: true, soDongGio: 0 };
+const CO_HANG = { sanSang: true, thieu: [], gioTrong: false, soDongGio: 2 };
+
+test('⭐⭐⭐ lần đầu bảo "trống" nhưng React vẽ sau → vẫn phải CHẶN Ở TẦNG LƯỢT', async () => {
+    // ⚠️ CA HỎNG THẬT 21:20 ngày 22/08/2026. Câu trả lời "sẵn sàng" chỉ đo đã
+    // nạp đủ bộ phận và đúng địa chỉ — KHÔNG đo React đã vẽ xong giỏ chưa. Tab
+    // vừa mở trả lời ngay khi content script chạy, lúc Tendoo chưa dựng lại đơn
+    // hàng đang dở, nên giỏ trông TRỐNG. Cửa chặn không đóng, cả lượt đi tiếp,
+    // rồi chết ở khách đầu tiên — sổ lệnh có thêm một dòng lỗi thừa.
+    const { cn, daGui, daDonGio } = await dungNhieuCauTraLoi([TRONG, CO_HANG]);
+    const kq = await cn.taoHoaDon([khach('PA', 1000000)]);
+    assert.strictEqual(kq.dung, true, '⛔ không chặn — lỗi 21:20 quay lại');
+    assert.strictEqual(kq.ly_do, CauNoi.LY_DO.GIO_KHONG_TRONG, JSON.stringify(kq));
+    assert.strictEqual(daDonGio.length, 1, 'phải thử dọn đúng một lần rồi mới chịu thua');
+    assert.strictEqual(daGui.length, 0,
+        '⛔ ĐÃ GỬI LỆNH cho khách trong khi giỏ còn hàng người dùng');
+});
+
+test('⭐⭐ và KHÔNG được xếp lệnh nào vào sổ', async () => {
+    // Cửa chặn sinh ra là để dừng TRƯỚC khi xếp hàng đợi. Chặn muộn thì sổ đã
+    // có một dòng lỗi, và người dùng phải đọc lỗi lồng trong kết quả.
+    const { cn, so } = await dungNhieuCauTraLoi([TRONG, CO_HANG]);
+    await cn.taoHoaDon([khach('PA', 1000000), khach('TB', 2000000)]);
+    assert.strictEqual(so.danhSach().length, 0, '⛔ sổ đã có lệnh dù cả lượt bị chặn');
+});
+
+test('⛔ nghe "CÓ HÀNG" ngay lần đầu thì KHÔNG hỏi lại cho phí', async () => {
+    // Đó là câu trả lời đã đúng rồi. Hỏi thêm chỉ tốn thời gian đúng vào lúc xấu
+    // nhất, mà lúc ấy người dùng đang chờ xem hỏng ở đâu.
+    const { cn, soLanHoi } = await dungNhieuCauTraLoi([CO_HANG]);
+    await cn.taoHoaDon([khach('PA', 1000000)]);
+    assert.strictEqual(soLanHoi(), 1, 'hỏi lại thừa: ' + soLanHoi());
+});
+
+test('⭐⭐ phải CHỜ THẬT giữa hai cú hỏi — hỏi lại ngay lập tức thì vô nghĩa', async () => {
+    // ⚠️ React cần thời gian để dựng lại đơn hàng đang dở. Hỏi lại NGAY thì cả
+    // hai câu trả lời đều chụp cùng một khoảnh khắc chưa vẽ xong, và cú hỏi thứ
+    // hai chỉ tốn công chứ không cứu được gì.
+    const { cn, daNghi } = await dungNhieuCauTraLoi([TRONG, CO_HANG]);
+    await cn.taoHoaDon([khach('PA', 1000000)]);
+    const lauNhat = Math.max(0, ...daNghi);
+    assert.ok(lauNhat >= 500,
+        '⛔ không chờ đủ lâu giữa hai cú hỏi (dài nhất ' + lauNhat + 'ms)');
+});
+
+test('⛔ câu trả lời thứ hai HỎNG thì giữ câu đầu, đừng tự làm mù mình', async () => {
+    // Tab tắt giữa chừng trả về rỗng. Lấy rỗng đè lên câu trả lời hợp lệ là
+    // biến "đã biết giỏ trống" thành "không biết gì", rồi dừng oan cả lượt.
+    const { cn, daGui } = await dungNhieuCauTraLoi([TRONG, null]);
+    const kq = await cn.taoHoaDon([khach('PA', 1000000)]);
+    assert.strictEqual(kq.dung, false, 'dừng oan: ' + JSON.stringify(kq));
     assert.strictEqual(daGui.length, 1);
 });
 

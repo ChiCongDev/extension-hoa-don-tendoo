@@ -63,6 +63,7 @@ function gan(goc, phuThuoc) {
     let caiDatTg = null;     // { telegramDaCoToken, telegramChatId } — báo Telegram
     let baoTg = null;        // kết quả thao tác Telegram gần nhất, vẽ ngay tại khối
     let lanBaoTg = null;     // lần báo tự động gần nhất (để lộ ra lỗi im lặng)
+    let baoChup = null;      // kết quả lần chụp giao diện POS gần nhất
     let baoSell = null;      // { chu, loi } — báo NGAY TRONG khối gửi sang Sell
 
     const tao = (the, lop, chu) => {
@@ -740,6 +741,88 @@ function gan(goc, phuThuoc) {
         if (oChat) oChat.value = c.telegramChatId || '';
     }
 
+    // ── CHỤP GIAO DIỆN POS ─────────────────────────────────────────────────
+    //
+    // ⚠️ Ngày 22/08/2026 Tendoo thay giao diện ngay trên /sales/pos và mọi
+    // khách hỏng cùng lúc: chân giỏ mất sạch nhãn tổng, thẻ hàng đổi chữ, nút
+    // ca đổi từ "Mở ca" thành "Vào ca".
+    //
+    // Lúc ấy không có cách nào nhìn thấy trang để sửa cho đúng — nó là ứng dụng
+    // React nằm sau đăng nhập. Ba đường vào từ bên ngoài đều đắt hơn thứ cần
+    // lấy: dùng mật khẩu Tendoo, chạy trên hồ sơ Chrome đang mở, hay sao chép
+    // cả hồ sơ. Trong khi extension ĐÃ Ở SẴN TRONG TRANG ẤY.
+    //
+    // ⛔ CHỈ ĐỌC. Nút này không bấm gì trên trang bán hàng, không phát hành gì.
+    function veChupGiaoDien() {
+        if (!guiNen) return;
+        const khoi = tao('div', 'hdt-sao-luu');
+        khoi.id = 'kbChup';
+        khoi.appendChild(tao('div', 'hdt-nhan', 'Chụp giao diện POS (khi Tendoo đổi giao diện)'));
+        khoi.appendChild(tao('div', 'hdt-dan',
+            'Tendoo đổi giao diện là máy đọc sai hoặc không đọc được — giỏ hàng, tổng tiền, '
+            + 'thẻ sản phẩm. Nút này chép lại giao diện ĐANG hiện thành chữ để người sửa mã '
+            + 'biết đường. Chỉ đọc, không bấm gì trên trang bán hàng.'));
+        khoi.appendChild(tao('div', 'hdt-dan',
+            'Trước khi bấm: mở tab bán hàng Tendoo, BỎ MỘT MÓN VÀO GIỎ (để số lượng 2 thì tốt '
+            + 'nhất), rồi gõ một tên hàng vào ô tìm kiếm cho bảng gợi ý hiện ra.'));
+
+        const hang = tao('div', 'hdt-cong-cu');
+        const nut = tao('button', 'hdt-chinh', 'Chụp giao diện POS');
+        nut.id = 'kbChupNut';
+        nut.onclick = () => chupGiaoDien();
+        hang.appendChild(nut);
+        khoi.appendChild(hang);
+
+        const bao = tao('div', 'hdt-dan');
+        bao.id = 'kbChupBao';
+        if (baoChup) {
+            bao.textContent = baoChup.chu;
+            bao.style.color = baoChup.loi ? '#b91c1c' : '#15803d';
+            bao.style.fontWeight = '600';
+        }
+        khoi.appendChild(bao);
+
+        // Chữ chụp được để nguyên trong một ô đọc được, chọn được, chép được.
+        if (baoChup && baoChup.noiDung) {
+            const o = tao('textarea');
+            o.id = 'kbChupChu';
+            o.readOnly = true;
+            o.value = baoChup.noiDung;
+            o.style.width = '100%';
+            o.style.height = '220px';
+            o.style.fontFamily = 'monospace';
+            o.style.fontSize = '11px';
+            khoi.appendChild(o);
+        }
+        goc.appendChild(khoi);
+    }
+
+    async function chupGiaoDien() {
+        baoChup = { chu: 'Đang chụp…', loi: false };
+        veLai();
+        let kq = null;
+        try { kq = await guiNen({ loai: 'hdt-chup-giao-dien' }); } catch (e) { kq = null; }
+        if (!kq || !kq.ok) {
+            baoChup = { chu: '✗ Không chụp được: '
+                + ((kq && kq.thongBao) || 'không rõ'), loi: true };
+            return veLai();
+        }
+        // Chép sẵn vào bộ nhớ tạm cho khỏi phải bôi đen. Chép không được thì
+        // vẫn còn ô chữ bên dưới — đừng để một tiện ích nhỏ làm hỏng cả việc.
+        let daChep = false;
+        try {
+            await navigator.clipboard.writeText(kq.chu);
+            daChep = true;
+        } catch (e) { daChep = false; }
+        baoChup = {
+            chu: '✓ Đã chụp ' + kq.chu.length + ' ký tự'
+                + (daChep ? ' — đã chép vào bộ nhớ tạm, dán thẳng ra được.'
+                          : ' — chép tự động không được, hãy bôi đen ô dưới rồi Ctrl+C.'),
+            loi: false, noiDung: kq.chu,
+        };
+        return veLai();
+    }
+
     async function luuTelegram() {
         const tin = { loai: 'hdt-dat-cai-dat', telegramChatId: layGiaTri('kbTgChatId') };
         // Ô token TRỐNG -> giữ nguyên token cũ, không xoá mất.
@@ -897,7 +980,7 @@ function gan(goc, phuThuoc) {
         veThongBao();
         if (kho && Kho.laKhoCu(kho)) veKhoCu();
         else { veCuaHangVuaThay(); veDanhSach(); veFormThem(); veSaoLuu(); veGuiSell();
-               veBaoTelegram(); }
+               veBaoTelegram(); veChupGiaoDien(); }
         return goc;
     }
 

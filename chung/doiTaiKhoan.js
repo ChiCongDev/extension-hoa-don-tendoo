@@ -310,10 +310,30 @@ function taoBoDoiTaiKhoan(boi) {
         }
 
         // ── 4. Đợi quay lại trang bán hàng ──────────────────────────────────
-        const urlPos = await doiTrang(tabId, (u) => LA_TRANG_POS.test(u), hanMs);
+        let urlPos = await doiTrang(tabId, (u) => LA_TRANG_POS.test(u), hanMs);
+
+        // ── THỬ LẠI MỘT LẦN: TỰ ĐƯA TAB VỀ TRANG BÁN HÀNG ───────────────────
+        //
+        // ⚠️ CA HỎNG THẬT 21/08/2026, mốc 18:05: khách Trang Bé TB (8.795.000đ)
+        // mất trắng vì «Đăng nhập xong nhưng không quay lại được trang bán
+        // hàng». Đăng nhập ĐÃ THÀNH CÔNG; chỉ là cú chuyển hướng của Tendoo
+        // không tới nơi trong hạn chờ. Mười phút sau mọi thứ lại chạy sạch.
+        //
+        // ⚠️ VÌ SAO AN TOÀN: chỗ này nằm TRƯỚC MỌI THAO TÁC VỚI GIỎ HÀNG —
+        // chưa bỏ món nào, chưa bấm Thanh toán, chưa có tờ hóa đơn nào tồn
+        // tại. Đưa tab về đúng địa chỉ không thể sinh ra hóa đơn trùng.
+        //
+        // ⛔ TỐI ĐA MỘT LẦN. Đứng được tới đây nghĩa là bước đăng nhập đã xong.
+        if (!urlPos) {
+            try {
+                await dieuHuongTab(tabId, URL_POS);
+                urlPos = await doiTrang(tabId, (u) => LA_TRANG_POS.test(u), hanMs);
+            } catch (e) { /* thất bại thì rơi xuống câu báo lỗi bên dưới */ }
+        }
         if (!urlPos) {
             return { ok: false, ma: MA.KHONG_QUAY_LAI_POS,
-                     thongBao: 'Đăng nhập xong nhưng không quay lại được trang bán hàng.' };
+                     thongBao: 'Đăng nhập xong nhưng không quay lại được trang bán hàng '
+                         + '(đã thử tự mở lại trang một lần). Tendoo hoặc mạng đang chậm.' };
         }
 
         // ── 4b. TẢI LẠI TRANG. Bước này BẮT BUỘC, đừng bỏ ───────────────────

@@ -133,10 +133,22 @@ function docTonTuLa(khoi) {
 }
 
 /** Mọi thẻ hàng đang hiện trên lưới, kèm tên/giá/tồn đọc được. */
+/**
+ * Ô tồn kho trên THẺ HÀNG, nhận cả hai lối Tendoo đã dùng.
+ *
+ * ⚠️ 22/08/2026 Tendoo thay giao diện: thẻ hàng thôi ghi "(Số lượng tồn: 11)"
+ * mà đổi thành "Còn: 11", và thêm hẳn dòng "Mã: SP0095". Máy dò đúng chữ cũ
+ * nên KHÔNG đọc ra thẻ nào — đường lùi (khi bảng gợi ý trống) coi như chết.
+ *
+ * MAU_TON_RIENG đã nhận cả "Tồn:", "Số lượng tồn:" lẫn "Còn:" nên dùng lại
+ * luôn, thay vì viết thêm một mẫu nữa để rồi hai chỗ lệch nhau.
+ */
+const LA_O_TON_THE = (e) => !e.children.length
+    && (/Số lượng tồn/i.test(e.textContent || '') || MAU_TON_RIENG.test(boDo().gonChu(e)));
+
 function docCacTheHang(tailieu) {
     const D = boDo();
-    const oTon = [...tailieu.querySelectorAll('*')]
-        .filter(e => !e.children.length && /Số lượng tồn/i.test(e.textContent || ''));
+    const oTon = [...tailieu.querySelectorAll('*')].filter(LA_O_TON_THE);
 
     const the = [];
     for (const o of oTon) {
@@ -147,9 +159,14 @@ function docCacTheHang(tailieu) {
         const ten = anhTruoc ? D.gonChu(anhTruoc) : '';
 
         // Đi lên tới phần tử bao trọn cả thẻ (chứa cả giá ở góc phải trên).
+        // Đi lên tới phần tử bao trọn cả thẻ: phải có CẢ số tiền LẪN ô tồn kho.
+        // ⚠️ Điều kiện cũ đòi đúng chữ "Số lượng tồn" nên giao diện mới không
+        // bao giờ thoả — vòng lặp chạy hết 8 tầng rồi lấy bừa phần tử cuối.
+        const chuTon = D.gonChu(o);
         let e = o, buoc = 0;
         while (e && buoc < 8) {
-            if (/\d{1,3}([.,]\d{3})+/.test(D.gonChu(e)) && D.gonChu(e).includes('Số lượng tồn')) break;
+            const c = D.gonChu(e);
+            if (/\d{1,3}([.,]\d{3})+/.test(c) && c.includes(chuTon)) break;
             e = e.parentElement; buoc++;
         }
         if (!e || the.some(t => t.el === e)) continue;
@@ -260,8 +277,17 @@ function coOMaRieng(khoi, ma) {
     const m = String(ma == null ? '' : ma).trim();
     if (!m || !khoi || !khoi.querySelectorAll) return false;
     const D = boDo();
+    // ⚠️ 22/08/2026 Tendoo thay giao diện: ô mã trên thẻ hàng thôi ghi "SP0095"
+    // trơn mà đổi thành "Mã: SP0095". So bằng nhau tuyệt đối thì trượt hết.
+    //
+    // ⛔ VÀ KHÔNG ĐƯỢC NỚI THÀNH "chứa là được": "SP002" nằm gọn trong "SP0020",
+    // và bỏ SAI mặt hàng vào giỏ là ra hóa đơn thuế sai. Nên chỉ cho phép ĐÚNG
+    // MỘT nhãn đứng trước, rồi vẫn so phần còn lại BẰNG NHAU TUYỆT ĐỐI.
+    const thoat = m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const coNhan = new RegExp('^(?:m[ãa]|sku|code)\\s*:?\\s*' + thoat + '$', 'i');
     for (const e of [khoi, ...khoi.querySelectorAll('*')]) {
-        if (D.gonChu(e) === m) return true;
+        const t = D.gonChu(e);
+        if (t === m || coNhan.test(t)) return true;
     }
     return false;
 }
@@ -408,7 +434,65 @@ function docCacDongGio(tailieu) {
 }
 
 /** Tổng thanh toán mà CHÍNH Tendoo hiện lên. Không đọc được thì null. */
-function docTongGio(tailieu) {
+/** Mọi số tiền ĐỨNG RIÊNG trong khối, theo thứ tự, đã bỏ trùng. */
+function cacTienTrongKhoi(khoi) {
+    if (!khoi || !khoi.querySelectorAll) return [];
+    const D = boDo();
+    const ra = [];
+    for (const e of [khoi, ...khoi.querySelectorAll('*')]) {
+        const t = D.gonChu(e);
+        if (!t || !MAU_TIEN_RIENG.test(t)) continue;
+        const so = D.docSoTien(t);
+        if (so != null && !ra.includes(so)) ra.push(so);
+    }
+    return ra;
+}
+
+/**
+ * THÀNH TIỀN của MỘT dòng giỏ.
+ *
+ * ⚠️ VÌ SAO PHẢI TỰ TÍNH. Ngày 22/08/2026 Tendoo thay giao diện NGAY TRÊN
+ * /sales/pos. Chân giỏ mất sạch nhãn: nó chỉ còn một biểu tượng giỏ và con số
+ *     🛒①  1.400.000  ⌄
+ * Không còn chữ "Tổng thanh toán" nào để dò, nên docTongGio() trả rỗng và MỌI
+ * khách đều hỏng với câu «tổng giỏ KHÔNG nhúc nhích».
+ *
+ * Nới thêm vài cái nhãn là vô ích — không có nhãn nào cả. Nhưng bảng giỏ mới
+ * có hẳn cột "Thành tiền", nên cộng từng dòng là đường đi đúng.
+ *
+ * ⚠️ VÀ PHẢI TỰ KIỂM CHỨNG. Lấy bừa "số tiền cuối dòng" là đúng loại đoán mò
+ * đã đẻ ra lỗi 841.450.000. Nên: thành tiền phải bằng MỘT số tiền khác trên
+ * cùng dòng NHÂN số lượng. Không thoả quan hệ ấy -> trả null, KHÔNG đoán.
+ *
+ * Giao diện CŨ chỉ hiện đúng một số tiền mỗi dòng (đã là thành tiền), nên
+ * không có gì để đối chiếu — lấy luôn số ấy, đúng như trước giờ vẫn làm.
+ */
+function docThanhTienDong(dong) {
+    const d = dong || {};
+    const sl = Number(d.soLuong);
+    if (!Number.isFinite(sl) || sl <= 0) return null;
+    const tien = cacTienTrongKhoi(d.khoi);
+    if (!tien.length) return null;
+    if (tien.length === 1) return tien[0];          // giao diện cũ
+    const cuoi = tien[tien.length - 1];             // cột "Thành tiền" ở cuối
+    return tien.some(a => a !== cuoi && a * sl === cuoi) ? cuoi : null;
+}
+
+/** Tổng giỏ CỘNG TỪ CÁC DÒNG. Dòng nào không chắc -> trả null cho cả tổng. */
+function docTongTuCacDong(tailieu) {
+    const dong = docCacDongGio(tailieu);
+    if (!dong.length) return null;
+    let tong = 0;
+    for (const d of dong) {
+        const t = docThanhTienDong(d);
+        if (t == null) return null;                 // thà không biết còn hơn biết sai
+        tong += t;
+    }
+    return tong;
+}
+
+/** Tổng giỏ đọc theo NHÃN — đường của giao diện cũ. */
+function docTongTheoNhan(tailieu) {
     const D = boDo();
     const cac = [...tailieu.querySelectorAll('*')]
         .filter(e => /Tổng thanh toán/i.test(e.textContent || ''))
@@ -422,6 +506,92 @@ function docTongGio(tailieu) {
         }
     }
     return null;
+}
+
+/**
+ * TỔNG GIỎ ĐỌC Ở CHÂN GIỎ, THEO VỊ TRÍ chứ không theo nhãn.
+ *
+ * ⚠️ VÌ SAO PHẢI CÓ. Giao diện mới (22/08/2026) xóa sạch nhãn ở chân giỏ — chỉ
+ * còn biểu tượng giỏ và con số trần:
+ *
+ *      🛒①  2.300.000  ⌄        [Lưu đơn (F2)]   [Thanh toán (F1)]
+ *
+ * docTongTheoNhan() dò chữ "Tổng thanh toán" nên trả null, và docTongGio() rơi
+ * về CHỈ CÒN MỘT NGUỒN là cộng các dòng. Lưới an toàn "hai phép đọc phải đồng
+ * ý" chết LẶNG LẼ — không báo lỗi, không kêu ca, cứ thế tin một nguồn duy nhất.
+ * Ảnh chụp trang thật 22/08/2026 cho thấy đúng cảnh nó sinh ra để chặn: chân
+ * giỏ ghi 2.300.000 trong khi giỏ chỉ có một dòng 1.450.000.
+ *
+ * ⚠️ NEO VÀO NÚT "Thanh toán", KHÔNG neo vào vị trí tuyệt đối trong trang. Con
+ * số ở chân giỏ luôn nằm cùng khối với nút ấy, dù giao diện xếp lại thế nào.
+ * Leo dần từ nút lên trên; TẦNG ĐẦU TIÊN có số tiền đứng riêng thì dừng — leo
+ * quá tay là vớ luôn bảng giá sản phẩm bên phải.
+ *
+ * ⛔ TẦNG ẤY CÓ NHIỀU HƠN MỘT SỐ KHÁC NHAU -> TRẢ NULL. Thà không biết còn hơn
+ * đoán bừa: đoán bừa ở đây là ra hóa đơn thuế sai tiền, không rút lại được.
+ */
+function docTongChanGio(tailieu) {
+    const D = boDo();
+    // ⛔ Bảng xác nhận và BẢNG NỔI CỦA CHÍNH MÌNH đều có chữ "Thanh toán".
+    // Vớ nhầm vào đó là đọc tổng của một cái bảng chứ không phải của giỏ.
+    const boQuaNut = (b) => {
+        try {
+            if (b.closest('[role="dialog"],.ant-modal,.ant-drawer')) return true;
+            for (let e = b; e; e = e.parentElement) {
+                if (/^hdt-/.test(String(e.id || ''))) return true;
+            }
+        } catch (e) { /* không hỏi được thì cứ xét tiếp */ }
+        return false;
+    };
+    const nut = [...tailieu.querySelectorAll('button')]
+        .find(b => CHU_THANH_TOAN.test(D.gonChu(b)) && !boQuaNut(b));
+    if (!nut) return null;
+
+    // Mọi thứ nằm TRONG một dòng giỏ đều không phải chân giỏ — nếu không thì
+    // "chân giỏ" chỉ là cột Thành tiền đọc lại lần hai, đối chiếu với chính nó.
+    const cacKhoi = docCacDongGio(tailieu).map(d => d.khoi).filter(Boolean);
+    const trongDongGio = (e) => cacKhoi.some(k => k === e || (k.contains && k.contains(e)));
+
+    for (let khoi = nut.parentElement, tang = 0; khoi && tang < 8;
+         khoi = khoi.parentElement, tang++) {
+        const so = [];
+        for (const e of [...khoi.querySelectorAll('*')]) {
+            if (trongDongGio(e)) continue;
+            const t = D.gonChu(e);
+            if (!t || !MAU_TIEN_RIENG.test(t)) continue;
+            const v = D.docSoTien(t);
+            if (v != null && !so.includes(v)) so.push(v);
+        }
+        if (!so.length) continue;
+        return so.length === 1 ? so[0] : null;
+    }
+    return null;
+}
+
+/**
+ * TỔNG GIỎ — MỌI phép đọc độc lập đọc được, và chúng phải ĐỒNG Ý.
+ *
+ * ⛔ LỆCH NHAU THÌ TRẢ NULL, tức là DỪNG. Hai nguồn cùng sai một kiểu thì gần
+ * như không thể; còn một nguồn sai mà mình nhắm mắt tin thì ra hóa đơn thuế
+ * sai tiền, không rút lại được.
+ *
+ * ⚠️ Đọc được BAO NHIÊU NGUỒN thì đối chiếu bấy nhiêu. Giao diện cũ có nhãn,
+ * giao diện mới không; nhưng cả hai đều có chân giỏ và đều có các dòng. Viết
+ * theo kiểu "gom lại rồi bắt đồng thuận" thì thêm bớt nguồn về sau không phải
+ * sửa lại luật.
+ */
+function docTongGio(tailieu) {
+    const coDong = docCacDongGio(tailieu).length > 0;
+    const dong = docTongTuCacDong(tailieu);
+    // ⛔ GIỎ CÓ HÀNG MÀ KHÔNG CỘNG NỔI CÁC DÒNG -> mình đang đọc sai giao diện,
+    // và lúc ấy con số ở chân giỏ cũng KHÔNG đáng tin hơn chút nào. Bản cũ vẫn
+    // nhắm mắt tin cái nhãn trong cảnh này; đó là chỗ nới tay duy nhất còn sót
+    // của lối "lấy bừa số tiền cuối dòng" từng đẻ ra lỗi 841.450.000.
+    if (coDong && dong == null) return null;
+    const cac = [docTongTheoNhan(tailieu), docTongChanGio(tailieu), dong]
+        .filter(x => x != null);
+    if (!cac.length) return null;
+    return cac.every(x => x === cac[0]) ? cac[0] : null;
 }
 
 /**
@@ -881,15 +1051,176 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
  * `ant-btn-dangerous` — đó là dấu hiệu đáng tin duy nhất, vì cả 4 nút trong
  * dòng đều không có chữ.
  */
+/**
+ * Chữ trên nhãn (title/aria-label) nói rằng đây là nút XÓA.
+ *
+ * ⚠️ Tiếng Việt có HAI lối bỏ dấu: "xóa" (dấu ở chữ o) và "xoá" (dấu ở chữ a).
+ * Bản đầu tôi chỉ viết một lối và bài test đỏ ngay — nhãn thật ghi "Xóa".
+ */
+const NHAN_XOA = /^\s*(?:x[óo]a|xo[áa]|delete|remove)/i;
+
+/**
+ * Nhãn nói rằng đây KHÔNG phải nút xóa — nhân bản, tách dòng, ghi chú.
+ *
+ * ⛔ BẤM NHẦM NÚT NHÂN BẢN LÀ TỆ HƠN KHÔNG BẤM GÌ: giỏ dài thêm một dòng, và
+ * vòng dọn giỏ sẽ bấm lại tới 60 lần. Giao diện mới 22/08/2026 có đúng một nút
+ * hình tờ giấy đứng ngay cạnh thùng rác.
+ */
+const NHAN_KHONG_XOA = /nh[âa]n b[ảa]n|sao ch[ée]p|copy|duplicate|t[áa]ch|ghi ch[úu]|note/i;
+
+/**
+ * Tên biểu tượng nói rằng đây LÀ nút xóa.
+ *
+ * ⚠️ Giao diện mới 22/08/2026 để dòng giỏ có hai nút biểu tượng KHÔNG CHỮ —
+ * nhân bản và thùng rác — mà thùng rác hiện màu xám, tức nhiều khả năng KHÔNG
+ * mang lớp "dangerous" của Ant Design. Hai đường nhận dạng cũ (lớp nguy hiểm,
+ * nhãn title) đều trượt, và cả lượt khóa chết ở "không dọn được giỏ".
+ *
+ * Ant Design đặt tên biểu tượng rất nhất quán: <span class="anticon anticon-delete">
+ * hoặc <svg data-icon="delete">. Đó là đường thứ ba, không cần trang có chữ nào.
+ */
+const TU_LA_XOA = new Set(['delete', 'trash', 'bin', 'remove', 'rest', 'xoa']);
+
+/**
+ * CHỮ KÝ HÌNH VẼ của hai biểu tượng không chữ trong dòng giỏ.
+ *
+ * ⚠️ ĐỌC TỪ DOM THẬT, KHÔNG PHẢI ĐOÁN. Lượt 14:13 ngày 23/08/2026 hỏng vì
+ * không nhận ra nút xóa, và lời khai của xoaSachGio() kể lại nguyên văn sáu nút
+ * trong dòng. Hoá ra Tendoo KHÔNG dùng biểu tượng của thư viện nào:
+ *
+ *   #1 «Ghi chú»   -> có chữ, loại theo nhãn
+ *   #2 «—»  M19 13H5v-2h14v2z          -> nút TRỪ
+ *   #3 «—»  M19 13h-6v6h-2v-6H5v…      -> nút CỘNG
+ *   #4 «990.000»                        -> nút SỬA GIÁ  ⛔ nguy hiểm nhất
+ *   #5 «—»  M6 10C6 8.11438…            -> NHÂN BẢN dòng
+ *   #6 «—»  M13 3.66406…                -> THÙNG RÁC    ← thứ cần bấm
+ *
+ * Không lớp "dangerous", không title, không tên biểu tượng — cả ba đường nhận
+ * dạng cũ đều trượt. Chỉ còn chính hình vẽ để bám.
+ *
+ * ⚠️ SO KHỚP PHẦN ĐẦU, không so trọn vẹn: các đường này dài và có phần đuôi
+ * phụ thuộc kích thước biểu tượng. Phần đầu đã đủ riêng biệt.
+ */
+const DAU_HINH_THUNG_RAC = ['M13 3.66406', 'M2 3.66536', 'M6.33398 11'];
+const DAU_HINH_NHAN_BAN = ['M6 10C6 8.11438', 'M11.3339 5.9987'];
+
+/** Mọi đường vẽ trong một nút. Không đọc được thì trả rỗng, không ném. */
+function cacDuongVe(nut) {
+    try {
+        return [...nut.querySelectorAll('path')].map(p => String(p.getAttribute('d') || ''));
+    } catch (e) { return []; }
+}
+
+/** Nút có mang một trong các chữ ký hình vẽ này không. */
+function coDauHinh(nut, cacDau) {
+    return cacDuongVe(nut).some(d => cacDau.some(x => d.startsWith(x)));
+}
+
+/** Nút có mang biểu tượng thùng rác không — xét theo TÊN, không theo hình vẽ. */
+function coBieuTuongXoa(nut) {
+    try {
+        for (const e of [nut, ...nut.querySelectorAll('*')]) {
+            if (!e.getAttribute) continue;
+            const g = e.getAttribute('data-icon');
+            if (g && TU_LA_XOA.has(String(g).toLowerCase())) return true;
+            const lop = String(e.getAttribute('class') || '');
+            if (lop.split(/[s_-]+/).some(x => TU_LA_XOA.has(x.toLowerCase()))) return true;
+        }
+    } catch (e) { /* không đọc được thì coi như không có */ }
+    return false;
+}
+
+/**
+ * KỂ LẠI MỌI NÚT TRONG MỘT DÒNG GIỎ — lớp, nhãn, tên biểu tượng, đầu hình vẽ.
+ *
+ * ⚠️ VÌ SAO. Khi không nhận ra nút xóa, câu báo lỗi cũ chỉ nói "không tìm
+ * thấy" — đúng nhưng vô dụng: tôi vẫn phải ngồi đoán giao diện mới trông thế
+ * nào, còn người dùng thì không có gì để gửi đi. Kèm bằng chứng vào thì LẦN
+ * HỎNG SAU TỰ NÓ LÀ BẢN CHỤP GIAO DIỆN, sửa được ngay mà không phải đoán.
+ */
+function keCacNutTrongDong(khoi) {
+    if (!khoi || !khoi.querySelectorAll) return '';
+    const D = boDo();
+    const cat = (v, n) => String(v || '').slice(0, n);
+    const ke = (b, i) => {
+        let nhan = '', lop = '', bieu = '', hinh = '';
+        try {
+            nhan = String(b.getAttribute('title') || b.getAttribute('aria-label') || '').trim();
+            lop = String(b.getAttribute('class') || '').trim();
+            bieu = [...b.querySelectorAll('[data-icon]')]
+                .map(e => e.getAttribute('data-icon')).filter(Boolean).join(',');
+            hinh = [...b.querySelectorAll('path')]
+                // ⚠️ 48 chứ không phải 20. Ngày 23/08/2026 tôi phải SUY chữ ký
+                // hình vẽ từ đoạn cắt cụt; đủ dài thì log đưa thẳng chữ ký ra,
+                // khỏi đoán, và lần Tendoo đổi biểu tượng sau sửa được ngay.
+                .map(p => cat(p.getAttribute('d'), 48)).filter(Boolean).join('|');
+        } catch (e) { /* nút hỏng thì kể được gì kể nấy */ }
+        return `#${i + 1}«${cat(D.gonChu(b) || nhan, 24) || '—'}» lớp="${cat(lop, 70)}"`
+            + (bieu ? ` biểu tượng="${cat(bieu, 40)}"` : '')
+            + (hinh ? ` hình="${cat(hinh, 200)}…"` : '');
+    };
+    try {
+        return [...khoi.querySelectorAll('button')].map(ke).join(' · ');
+    } catch (e) { return ''; }
+}
+
 function timNutXoaDong(khoi) {
     if (!khoi) return null;
     const D = boDo();
-    return [...khoi.querySelectorAll('button')].find(b => {
-        const lop = String(b.className || '');
-        if (!/dangerous|danger/i.test(lop)) return false;
+    const nhan = (b) => String((b.getAttribute && (b.getAttribute('title')
+        || b.getAttribute('aria-label'))) || '');
+
+    const duocPhep = (b) => {
         const chu = D.gonChu(b);
-        return !CHU_THANH_TOAN.test(chu) && !CHU_LUU_DON.test(chu);
-    }) || null;
+        if (CHU_THANH_TOAN.test(chu) || CHU_LUU_DON.test(chu)) return false;
+        if (NHAN_KHONG_XOA.test(nhan(b)) || NHAN_KHONG_XOA.test(chu)) return false;
+        // ⛔⛔ NÚT SỬA GIÁ. Dòng giỏ thật 23/08/2026 có một nút mang đúng chữ
+        // «990.000» — đó là chỗ bấm vào để ĐỔI GIÁ BÁN. Bấm nhầm nó ngay trước
+        // khi xuất hóa đơn là sai tiền trên tờ hóa đơn thuế.
+        if (MAU_TIEN_RIENG.test(chu)) return false;
+        // ⛔ Hai nút − và + của ô số lượng KHÔNG có chữ, chỉ khác nhau ở HÌNH
+        // VẼ. Bấm nhầm là đổi số lượng — hóa đơn sai tiền mà giỏ vẫn "còn hàng".
+        try {
+            const d = [...b.querySelectorAll('path')].map(p => p.getAttribute('d') || '');
+            if (d.some(x => x === DUONG_TRU || x === DUONG_CONG)) return false;
+        } catch (e) { /* không đọc được hình thì cứ xét tiếp */ }
+        // ⛔ Nút NHÂN BẢN DÒNG đứng ngay cạnh thùng rác và cũng không có chữ.
+        // Loại một thứ đã biết chắc là sai an toàn hơn nhiều so với đoán một
+        // thứ đúng — nên chữ ký hình vẽ của nó nằm ở đây, phía loại trừ.
+        if (coDauHinh(b, DAU_HINH_NHAN_BAN)) return false;
+        return true;
+    };
+
+    const cac = [...khoi.querySelectorAll('button')].filter(duocPhep);
+
+    // ⛔ MỖI LUẬT PHẢI CHỈ RA ĐÚNG MỘT NÚT. Khớp hai nút trở lên nghĩa là trang
+    // không còn giống thứ mình biết — lúc ấy `find` sẽ lặng lẽ lấy cái đầu tiên,
+    // tức là ĐOÁN. Thà dừng và khai ra còn hơn bấm vào một nút không rõ là gì.
+    const duyNhat = (loc) => {
+        const hop = cac.filter(loc);
+        if (hop.length === 1) return { xong: true, nut: hop[0] };
+        if (hop.length > 1) return { xong: true, nut: null };   // mập mờ -> dừng hẳn
+        return { xong: false, nut: null };                      // không khớp -> luật sau
+    };
+
+    // Xếp theo ĐỘ CHẮC CHẮN giảm dần. Luật chắc hơn mà mập mờ thì dừng luôn,
+    // không được rơi xuống luật yếu hơn để "gỡ gạc".
+    const CAC_LUAT = [
+        // 1. Ant Design đánh dấu nút nguy hiểm bằng lớp "dangerous".
+        (b) => /dangerous|danger/i.test(String(b.className || '')),
+        // 2. Giao diện mới có thể bỏ lớp ấy — lùi về đọc NHÃN của nút.
+        (b) => NHAN_XOA.test(nhan(b)),
+        // 3. Không lớp, không nhãn — đọc TÊN biểu tượng của thư viện.
+        coBieuTuongXoa,
+        // 4. Tendoo KHÔNG dùng biểu tượng của thư viện nào cả: chỉ có <svg><path>
+        //    thô, không tên, không nhãn. Chỉ còn CHÍNH HÌNH VẼ để bám.
+        (b) => coDauHinh(b, DAU_HINH_THUNG_RAC),
+    ];
+    for (const luat of CAC_LUAT) {
+        const r = duyNhat(luat);
+        if (r.xong) return r.nut;
+    }
+    return null;
 }
 
 /** Xóa sạch giỏ — dùng khi cần dọn trước lượt sau. Không bấm gì ngoài nút xóa dòng. */
@@ -911,11 +1242,26 @@ async function xoaSachGio(tailieu, tuyChon = {}) {
                 ok: false,
                 thongBao: `Không tìm thấy nút xóa dòng trong giỏ (giỏ đang có ${cac.length} món). `
                     + 'Giao diện Tendoo có thể vừa đổi. Hãy sang tab Tendoo tự xóa từng dòng, '
-                    + 'rồi chạy lại. CHƯA phát hành hóa đơn nào.',
+                    + 'rồi chạy lại. CHƯA phát hành hóa đơn nào.'
+                    + ` [CÁC NÚT TRONG DÒNG: ${keCacNutTrongDong(cac[0].khoi) || 'không có nút nào'}]`,
             };
         }
         const conLai = cac.length;
         nut.click();
+        // ⛔ GIỎ DÀI RA LÀ BẤM NHẦM — dừng NGAY, đừng bấm thêm 59 lần nữa.
+        // Nút nhân bản dòng đứng ngay cạnh thùng rác trong giao diện 22/08/2026.
+        await nhinToiKhi(() => docCacDongGio(tailieu).length !== conLai,
+                         { nghi, hanMs: tuyChon.hanXoaDong || 2000,
+                           nhipMs: tuyChon.nhipXoa || NhipDo.NHIN_XOA_DONG });
+        if (docCacDongGio(tailieu).length > conLai) {
+            return {
+                ok: false,
+                thongBao: `Bấm nút xóa nhưng giỏ lại DÀI THÊM (${conLai} -> `
+                    + `${docCacDongGio(tailieu).length} dòng) — máy bấm nhầm sang nút khác. `
+                    + 'Đã dừng ngay để khỏi làm giỏ phình thêm. Hãy sang tab Tendoo tự dọn giỏ. '
+                    + 'CHƯA phát hành hóa đơn nào.',
+            };
+        }
         // Chờ dòng đó biến mất rồi mới xóa dòng tiếp — bấm dồn khi React chưa vẽ
         // lại là bấm vào nút của dòng đã biến mất.
         await nhinToiKhi(() => docCacDongGio(tailieu).length < conLai,
@@ -929,7 +1275,10 @@ async function xoaSachGio(tailieu, tuyChon = {}) {
     };
 }
 
-const API = { coGiaTrongChu, coMaTrongChu, coOMaRieng, docGiaTuLa, docTonTuLa, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
+const API = { coGiaTrongChu, coMaTrongChu, coOMaRieng, docGiaTuLa, docTonTuLa, timNutXoaDong,
+              coDauHinh, cacDuongVe, DAU_HINH_THUNG_RAC, DAU_HINH_NHAN_BAN,
+              coBieuTuongXoa, keCacNutTrongDong,
+              cacTienTrongKhoi, docThanhTienDong, docTongTuCacDong, docTongTheoNhan, docTongChanGio, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
               xoaSachGio, timNutXoaDong, timNutCong, gioDangTrong, timOTimKiem,
               docTongGioChoKip, MA };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

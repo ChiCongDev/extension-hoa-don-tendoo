@@ -1322,7 +1322,9 @@ function veMotBanGhi(tailieu, b) {
     dau.className = 'hdt-ls-dau';
     dau.textContent = `${gioVN(b.luc)} · ${b.nguon === 'HEN_GIO' ? 'hẹn giờ' : 'chạy tay'}`
         + (b.moc ? ` ${b.moc}` : '')
-        + (b.ngay && b.ngay.tu ? ` · số liệu ngày ${b.ngay.tu}` : '');
+        + (b.ngay && b.ngay.tu ? ` · số liệu ngày ${b.ngay.tu}` : '')
+        // Bản nào tạo ra dòng này — để không bao giờ phải đoán lại nữa.
+        + (b.banExt ? ` · bản ${b.banExt}` : '');
     khoi.appendChild(dau);
 
     const tom = tailieu.createElement('div');

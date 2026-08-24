@@ -139,7 +139,11 @@ test('⛔⛔ "Đóng ca" KHÔNG được nhận nhầm là "Mở ca"', () => {
 test('⛔ so chữ TUYỆT ĐỐI, không phải chứa-là-được', () => {
     const trang = taoTrangPos({ coNutMoCa: true });
     const n = trang.tailieu.getElementById('nutMoCa');
-    for (const chu of ['Hướng dẫn mở ca bán hàng', 'Mở ca?', 'Chưa mở ca', 'mở cửa']) {
+    // ⚠️ 'Mở ca?' ĐÃ BỊ BỎ khỏi danh sách. Từ 22/08/2026 máy gỡ đồ trang trí ở
+    // HAI ĐẦU nhãn (nút thật ghi '→ Vào ca'), nên dấu hỏi cuối cũng bị gỡ. Xét
+    // lại thì nhận ra 'Mở ca?' là ĐÚNG bệnh — ca vẫn chưa mở.
+    // Điều cần giữ vẫn nguyên: chữ ở GIỮA thì không được đụng tới.
+    for (const chu of ['Hướng dẫn mở ca bán hàng', 'Chưa mở ca', 'mở cửa', 'Ca làm việc']) {
         n.textContent = chu;
         assert.strictEqual(T.timNutMoCa(trang.tailieu), null, 'nhận bừa: ' + chu);
     }

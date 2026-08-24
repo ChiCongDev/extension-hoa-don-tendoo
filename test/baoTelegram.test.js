@@ -82,8 +82,11 @@ test('⛔⛔ VAO_GIO thì TUYỆT ĐỐI KHÔNG báo — hàng mới vào giỏ,
     assert.strictEqual(f.cac.length, 0, 'đã nhắn "đã xuất hóa đơn" cho đơn CHƯA xuất');
 });
 
-test('⛔ LOI và TREO cũng không báo', async () => {
-    for (const k of ['LOI', 'TREO', '', 'RA_HOA_DONX', 'ra_hoa_don']) {
+test('⛔ trạng thái KHÔNG hiểu được thì im lặng, không đoán bừa', async () => {
+    // ⚠️ Từ 22/08/2026 LOI và TREO CÓ báo (chủ dự án chốt) — xem mục riêng ở
+    // dưới. Còn những trạng thái lạ thì vẫn phải im: đoán bừa một cái tên
+    // trạng thái là nhắn sai bản chất việc đã xảy ra.
+    for (const k of ['', 'RA_HOA_DONX', 'ra_hoa_don', 'VAO_GIO', 'BO_QUA', 'CHUA_CHAY']) {
         const { f } = await bao({ ket_qua: k });
         assert.strictEqual(f.cac.length, 0, 'đã báo với ket_qua=' + JSON.stringify(k));
     }
@@ -214,6 +217,197 @@ test('gọi đúng bot và đúng chat', async () => {
     assert.strictEqual(f.cac[0].than.chat_id, '98765');
 });
 
+ghiChu('— ⭐⭐ BÁO CẢ KHI LỖI (chủ dự án chốt 2026-08-22) —');
+
+// ⚠️ VÌ SAO THÊM. Trước 22/08 chỉ báo thành công. Đêm 21/08 ba tờ ra thì có
+// tin, còn HAI LỖI thì IM LẶNG HOÀN TOÀN — kiểu im lặng tệ nhất, vì người đọc
+// tưởng mọi thứ đều ổn trong khi mất 8.795.000đ và cả một mốc giờ.
+
+test('⭐⭐ LOI → báo, kèm số tiền ĐỊNH xuất và lý do', async () => {
+    const { kq, f } = await bao({
+        ket_qua: 'LOI', so_tien: 8795000,
+        ly_do: 'Đăng nhập xong nhưng không quay lại được trang bán hàng.',
+    });
+    assert.strictEqual(kq.daGui, 1, JSON.stringify(kq));
+    const chu = f.cac[0].than.text;
+    assert.match(chu, /❌ KHÔNG xuất được hóa đơn/, chu);
+    assert.match(chu, /Số tiền định xuất: 8\.795\.000đ/,
+        'gọi là "Số tiền" thì người đọc tưởng tiền đã ra: ' + chu);
+    assert.match(chu, /Lý do: Đăng nhập xong nhưng không quay lại/, chu);
+    assert.ok(!/Đã xuất hóa đơn/.test(chu), 'tin lỗi mà đầu đề như tin thành công: ' + chu);
+});
+
+test('⭐⭐⭐ TREO → tin phải HÉT LÊN, đây là loại nguy hiểm nhất', async () => {
+    // Máy đã bấm "Xác nhận" mà không đọc được kết quả — tiền CÓ THỂ đã lên cơ
+    // quan thuế. Người đọc phải mở Tendoo kiểm tận mắt, nên tin này không được
+    // lẫn với hai loại kia.
+    const { kq, f } = await bao({
+        ket_qua: 'TREO', so_tien: 5500000,
+        ly_do: 'Đã bấm "Xác nhận" nhưng giỏ vẫn còn hàng.',
+    });
+    assert.strictEqual(kq.daGui, 1, JSON.stringify(kq));
+    const chu = f.cac[0].than.text;
+    assert.match(chu, /KHÔNG RÕ đã xuất hóa đơn hay chưa/, chu);
+    assert.match(chu, /KIỂM TRA TENDOO/, 'không bảo người đọc phải làm gì: ' + chu);
+    assert.match(chu, /Lý do: Đã bấm "Xác nhận"/, chu);
+});
+
+test('⛔ ba loại tin phải có ĐẦU ĐỀ KHÁC NHAU', async () => {
+    const dau = {};
+    for (const k of ['RA_HOA_DON', 'LOI', 'TREO']) {
+        const { f } = await bao({ ket_qua: k, ly_do: 'x' });
+        dau[k] = f.cac[0].than.text.split('\n')[0];
+    }
+    assert.notStrictEqual(dau.RA_HOA_DON, dau.LOI);
+    assert.notStrictEqual(dau.LOI, dau.TREO);
+    assert.notStrictEqual(dau.RA_HOA_DON, dau.TREO);
+});
+
+test('⛔ tin THÀNH CÔNG dở dang vẫn dùng dấu ⚠, không phải "Lý do:"', async () => {
+    // Ra 4/6 tờ rồi dừng: tiền ĐÃ ra thật, nên đầu đề vẫn là ✅ và lời cảnh báo
+    // là phụ chú — khác hẳn tin lỗi, nơi lý do CHÍNH LÀ nội dung.
+    const { f } = await bao({ ly_do: 'Ra 4 hóa đơn rồi dừng.' });
+    const chu = f.cac[0].than.text;
+    assert.match(chu, /⚠ Ra 4 hóa đơn rồi dừng/, chu);
+    assert.ok(!/Lý do:/.test(chu), chu);
+});
+
+test('⭐ LOI với số tiền 0 vẫn phải báo — lỗi là lỗi', async () => {
+    // Khác tin thành công: 'RA_HOA_DON' mà 0đ thì không có gì để khoe, nhưng
+    // một lỗi thì vẫn phải kêu dù chưa kịp tính ra số tiền nào.
+    const { kq } = await bao({ ket_qua: 'LOI', so_tien: 0, ly_do: 'x' });
+    assert.strictEqual(kq.daGui, 1, JSON.stringify(kq));
+});
+
+test('loaiTin phân loại đúng', () => {
+    const g = (o) => Tg.loaiTin({ ma_khach_hang: 'TB', ma_lenh: 'x', so_tien: 1000, ...o });
+    assert.strictEqual(g({ ket_qua: 'RA_HOA_DON' }), 'RA');
+    assert.strictEqual(g({ ket_qua: 'LOI' }), 'LOI');
+    assert.strictEqual(g({ ket_qua: 'TREO' }), 'TREO');
+    assert.strictEqual(g({ ket_qua: 'VAO_GIO' }), null);
+    assert.strictEqual(g({ ket_qua: 'BO_QUA' }), null);
+    assert.strictEqual(g({ ket_qua: 'CHUA_CHAY' }), null);
+    assert.strictEqual(g({ ket_qua: 'RA_HOA_DON', so_tien: 0 }), null);
+    assert.strictEqual(Tg.loaiTin({ ket_qua: 'LOI' }), null, 'thiếu mã mà vẫn nhận');
+    assert.strictEqual(Tg.loaiTin(null), null);
+});
+
+ghiChu('— ⭐⭐ TIN CẢ LƯỢT KHÔNG CHẠY —');
+
+const LUOT = {
+    moc: '18:10', ngay: { tu: '2026-08-21' }, chay: false,
+    lyDo: 'KHONG_MO_DUOC_BANG',
+    thongBao: 'Không gọi được bongtom.store ở https://bongtom.store: Failed to fetch',
+    khach: [{ maKH: 'S1', tenKH: 'Bích Ngọc S1', ket: 'CHUA_CHAY' }],
+};
+const baoL = (them = {}, kho = taoKho(), f = taoFetch()) =>
+    Tg.baoLuot({ banGhi: { ...LUOT, ...them }, caiDat: CAI_DAT, kho, layFetch: f, luc: 1 })
+        .then(kq => ({ kq, kho, f }));
+
+test('⭐⭐⭐ cả lượt không chạy → PHẢI báo, vì không dòng khách nào mang nổi lý do', async () => {
+    // Lượt 18:10 ngày 21/08 hỏng vì «Không gọi được bongtom.store» — lý do ấy
+    // nằm ở TẦNG LƯỢT. Chỉ báo theo dòng khách thì cả lượt hỏng mà người dùng
+    // KHÔNG NHẬN ĐƯỢC GÌ.
+    const { kq, f } = await baoL();
+    assert.strictEqual(kq.daGui, 1, JSON.stringify(kq));
+    const chu = f.cac[0].than.text;
+    assert.match(chu, /🚫 Cả lượt KHÔNG chạy — mốc 18:10/, chu);
+    assert.match(chu, /Không gọi được bongtom.store/, chu);
+    assert.match(chu, /Bỏ lỡ: 1 khách \(Bích Ngọc S1\)/, 'không nói bỏ lỡ ai: ' + chu);
+});
+
+test('⛔⛔ NGÀY YÊN Ả thì TUYỆT ĐỐI KHÔNG báo — kẻo mỗi tối một tin rác', async () => {
+    // Chuyện này xảy ra gần như MỖI TỐI. Báo nó là ba ngày sau người dùng tắt
+    // thông báo, và lúc đó những tin thật cũng chết theo.
+    for (const l of ['KHONG_KHACH_NAO_PHAT_SINH', 'MOC_KHONG_CO_KHACH']) {
+        const { kq, f } = await baoL({ lyDo: l });
+        assert.strictEqual(f.cac.length, 0, 'đã báo ngày yên ả: ' + l);
+        assert.strictEqual(kq.daGui, 0);
+        assert.strictEqual(kq.hong, 0, 'đếm thành hỏng → báo động đỏ giả: ' + l);
+    }
+});
+
+test('⛔ lượt CÓ chạy thì không báo gì thêm — từng khách đã có tin riêng', async () => {
+    const { f } = await baoL({ chay: true });
+    assert.strictEqual(f.cac.length, 0);
+});
+
+test('⭐⭐ mỗi MỐC GIỜ chỉ báo MỘT lần dù gọi lại nhiều lượt', async () => {
+    const kho = taoKho();
+    const f = taoFetch();
+    const g = { banGhi: LUOT, caiDat: CAI_DAT, kho, layFetch: f, luc: 1 };
+    await Tg.baoLuot(g);
+    await Tg.baoLuot(g);
+    assert.strictEqual(f.cac.length, 1, 'nhắn ' + f.cac.length + ' tin cho một mốc');
+});
+
+test('hai mốc khác nhau thì báo hai tin', async () => {
+    const kho = taoKho();
+    const f = taoFetch();
+    await Tg.baoLuot({ banGhi: LUOT, caiDat: CAI_DAT, kho, layFetch: f, luc: 1 });
+    await Tg.baoLuot({ banGhi: { ...LUOT, moc: '18:20' }, caiDat: CAI_DAT, kho, layFetch: f, luc: 2 });
+    assert.strictEqual(f.cac.length, 2);
+});
+
+test('⭐ gửi hỏng thì TRẢ CHỖ, lượt sau còn thử lại được', async () => {
+    const kho = taoKho();
+    const hong = taoFetch({ ok: false, status: 500, than: { ok: false } });
+    await Tg.baoLuot({ banGhi: LUOT, caiDat: CAI_DAT, kho, layFetch: hong, luc: 1 });
+    assert.deepStrictEqual(kho.xem(), [], 'còn giữ dấu → tin này mất vĩnh viễn');
+    const tot = taoFetch();
+    const kq2 = await Tg.baoLuot({ banGhi: LUOT, caiDat: CAI_DAT, kho, layFetch: tot, luc: 2 });
+    assert.strictEqual(kq2.daGui, 1);
+});
+
+test('⛔⛔ baoLuot KHÔNG BAO GIỜ được ném, và chưa khai báo thì im', async () => {
+    // ⚠️ ĐỪNG JSON.stringify cái bẫy. Bản đầu tôi đưa nó vào lời nhắn của
+    // assert — mà lời nhắn được tính NGAY, nên chính bài test gọi vào getter
+    // rồi nổ, trong khi baoLuot() đã bắt lỗi đúng như phải thế. Bài test tự
+    // nổ thì cho ra kết luận sai y như mã hỏng.
+    const cacRac = [null, undefined, {}, { chay: false, get khach() { throw new Error('vỡ'); } }];
+    for (let i = 0; i < cacRac.length; i++) {
+        const kq = await Tg.baoLuot({ banGhi: cacRac[i], caiDat: CAI_DAT, kho: taoKho(),
+                                      layFetch: taoFetch(), luc: 1 });
+        assert.strictEqual(typeof kq, 'object', 'ném với rác số ' + i);
+    }
+    // Cái bẫy PHẢI thật sự nổ, nếu không bài này chẳng kiểm được gì.
+    const kqBay = await Tg.baoLuot({
+        banGhi: cacRac[3], caiDat: CAI_DAT, kho: taoKho(), layFetch: taoFetch(), luc: 1 });
+    assert.strictEqual(kqBay.ma, 'NGOAI_LE', 'cảnh dựng không chạm tới lớp bắt lỗi');
+    const f = taoFetch();
+    const kq = await Tg.baoLuot({ banGhi: LUOT, caiDat: {}, kho: taoKho(), layFetch: f, luc: 1 });
+    assert.strictEqual(f.cac.length, 0, 'chưa khai báo mà vẫn gọi mạng');
+    assert.strictEqual(kq.ma, 'CHUA_KHAI_BAO');
+    assert.strictEqual(kq.hong, 0, 'chưa khai báo mà đếm thành hỏng');
+});
+
+test('mã chống trùng của lượt gắn với NGÀY, không chỉ mốc giờ', () => {
+    // Cùng mốc 18:10 nhưng hai ngày khác nhau là hai chuyện khác nhau.
+    const a = Tg.maLuot(LUOT);
+    const b = Tg.maLuot({ ...LUOT, ngay: { tu: '2026-08-22' } });
+    assert.notStrictEqual(a, b, 'hôm sau hỏng lại thì im lặng luôn');
+});
+
+ghiChu('— Nối vào nền: tin cả lượt —');
+
+test('⭐ nền có gọi baoLuot khi ghi lịch sử', () => {
+    const ma = doc('background.js');
+    // ⚠️ ĐÒI ĐÚNG CÂU LỆNH GỌI, không chỉ đòi cái tên có mặt. Bản đầu tôi chỉ
+    // dò tên hàm — gài lỗi bọc nó trong `if (0)` thì tên vẫn còn nguyên và bài
+    // test vẫn xanh, trong khi tin cả-lượt đã chết hẳn.
+    assert.match(ma, /const kq = await self\.HDT_BaoTelegram\.baoLuot\(\{[\s\S]{0,120}banGhi/,
+        'quên nối tin cả-lượt → cả lượt hỏng mà không ai biết');
+    assert.ok(!/if \((?:0|false)\)[^\n]*baoLuot/.test(ma), 'lời gọi baoLuot bị vô hiệu hoá');
+});
+
+test('⛔⛔ tin cả lượt cũng KHÔNG được làm hỏng lần chạy', () => {
+    const ma = doc('background.js');
+    const b = ma.indexOf('self.HDT_BaoTelegram.baoLuot');
+    const khuc = ma.slice(Math.max(0, b - 400), b + 600);
+    assert.match(khuc, /try \{/, 'không bọc trong try: ' + khuc.slice(-200));
+    assert.match(khuc, /catch \(e\) \{ \/\* cố ý nuốt/, 'không nuốt lỗi');
+});
+
 ghiChu('— ⭐⭐ CHỐNG BÁO TRÙNG —');
 
 test('⭐⭐ cùng một mã lệnh gọi HAI lần chỉ nhắn MỘT tin', async () => {
@@ -320,7 +514,11 @@ test('⛔⛔ dòng dữ liệu tự nó NỔ cũng không được ném ra ngoà
     // baoCacDong: fetch nổ thì guiTin đã bắt, sổ nổ thì gianhCho đã bắt. Gài
     // lỗi cho lớp ngoài cùng ném ra thì cả hai bài vẫn XANH — tức là lớp ấy
     // chưa từng được kiểm. Đây là bài chạm tới nó.
-    const nomit = { get ket_qua() { throw new Error('vỡ khi đọc'); } };
+    // ⚠️ Phải có ĐỦ mã khách và mã lệnh, nếu không loaiTin() chặn ngay ở khâu
+    // kiểm mã và không bao giờ chạm tới cái bẫy — bài test khi ấy xanh vì lý
+    // do sai, và lớp bắt lỗi ngoài cùng lại chưa từng được kiểm.
+    const nomit = { ma_khach_hang: 'TB', ma_lenh: 'x',
+                    get ket_qua() { throw new Error('vỡ khi đọc'); } };
     const kq = await Tg.baoCacDong({ cacDong: [nomit], caiDat: CAI_DAT, kho: taoKho(),
                                      layFetch: taoFetch(), luc: 1 });
     assert.strictEqual(typeof kq, 'object');

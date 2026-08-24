@@ -163,11 +163,22 @@ test('Tendoo chặn số lượng giữa chừng → báo lỗi, KHÔNG coi là 
     assert.strictEqual(kq.ma, MA.KHONG_DAT_DUOC_SO_LUONG);
 });
 
-test('không đọc được "Tổng thanh toán" → báo lỗi chứ không đoán số', async () => {
-    // Giỏ TRỐNG mà không có dòng tổng là chuyện BÌNH THƯỜNG của Tendoo (đo trang
-    // thật 2026-08-12), nên chỗ đó máy hiểu là 0. Cảnh hỏng thật là bỏ hàng vào
-    // rồi mà vẫn không đọc được tổng — lúc ấy máy phải DỪNG, không được đoán.
-    const t = taoTrangPos({ khongCoDongTong: true });
+test('⭐⭐ GIAO DIỆN MỚI 22/08: mất sạch nhãn tổng → CỘNG TỪ CÁC DÒNG', async () => {
+    // ⚠️ Ngày 22/08/2026 Tendoo thay giao diện ngay trên /sales/pos. Chân giỏ
+    // chỉ còn một biểu tượng giỏ và con số — không còn chữ "Tổng thanh toán"
+    // nào để dò. MỌI khách hỏng với câu «tổng giỏ KHÔNG nhúc nhích».
+    //
+    // Bảng giỏ mới có cột "Thành tiền", nên cộng từng dòng là đường đi đúng.
+    const t = taoTrangPos({ giaoDienMoi: true, khongCoDongTong: true });
+    const kq = await BoGio.boVaoGio(t.tailieu, [mon('Quần Jogger thể thao nữ', 1)], nhanh);
+    assert.strictEqual(kq.ma, MA.OK, 'thông báo: ' + kq.thongBao);
+    assert.strictEqual(t.tongHienTai(), 490000);
+});
+
+test('⭐⭐ thành tiền KHÔNG khớp giá × số lượng → DỪNG, tuyệt đối không đoán', async () => {
+    // Lấy bừa "số tiền cuối dòng" là đúng loại đoán mò đã đẻ ra lỗi 841.450.000.
+    // Không thoả quan hệ thì thà không biết tổng còn hơn biết sai.
+    const t = taoTrangPos({ giaoDienMoi: true, khongCoDongTong: true, thanhTienSai: true });
     const kq = await BoGio.boVaoGio(t.tailieu, [mon('Quần Jogger thể thao nữ', 1)], nhanh);
     assert.strictEqual(kq.ok, false);
     assert.ok(kq.ma === MA.KHONG_DOC_DUOC_TONG || kq.ma === MA.KHONG_VAO_GIO,
@@ -540,11 +551,27 @@ test('⭐ giỏ trống thì TỔNG LÀ 0 — không phải "đọc hỏng"', as
     assert.strictEqual(tong, 0, 'lại coi giỏ trống là đọc hỏng — đúng lỗi ngày 2026-08-12');
 });
 
-test('⭐ giỏ CÓ HÀNG mà mất dòng tổng → trả null, để tầng trên dừng', async () => {
+test('⭐ mất dòng tổng NHƯNG dòng giỏ đọc được → vẫn ra đúng tổng', async () => {
+    // Từ 22/08/2026 đây mới là cảnh thường: chân giỏ không còn nhãn nào.
     const t = taoTrangPos({ gioBanDau: [{ ten: 'Quần Jogger thể thao nữ' }],
                             khongCoDongTong: true });
     const tong = await BoGio.docTongGioChoKip(t.tailieu, { nghi: nhanh.nghi, hanMs: 0, nhipMs: 10 });
+    assert.strictEqual(tong, 490000);
+});
+
+test('⭐ mất dòng tổng VÀ dòng giỏ cũng không chắc → trả null, để tầng trên dừng', async () => {
+    const t = taoTrangPos({ gioBanDau: [{ ten: 'Quần Jogger thể thao nữ', soLuong: 2 }],
+                            giaoDienMoi: true, khongCoDongTong: true, thanhTienSai: true });
+    const tong = await BoGio.docTongGioChoKip(t.tailieu, { nghi: nhanh.nghi, hanMs: 0, nhipMs: 10 });
     assert.strictEqual(tong, null);
+});
+
+test('⛔⛔ HAI ĐƯỜNG ĐỌC LỆCH NHAU → trả null, KHÔNG chọn bừa một bên', async () => {
+    // Nhãn nói một đằng, các dòng nói một nẻo. Tin bên nào cũng có thể ra hóa
+    // đơn thuế sai tiền — thứ không rút lại được. Thà dừng.
+    const t = taoTrangPos({ gioBanDau: [{ ten: 'Quần Jogger thể thao nữ' }] });
+    t.tailieu.getElementById('tongTt').textContent = '123.000';
+    assert.strictEqual(BoGio.docTongGio(t.tailieu), null);
 });
 
 test('⭐ chân giỏ vẽ TRỄ → chờ được, không kết luận vội', async () => {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hoa don dien tu Tendoo - Sell",
-  "version": "2.19.0",
+  "version": "2.26.0",
   "description": "Tao hoa don dien tu tren Tendoo tu bao cao khach hang cua Sell. BAN 2.0: BO HAN KHOA MO - khai bao xong la chay duoc ngay, khong phai go lai sau khi mo Chrome hay tai lai extension. Doi lai: ai mo duoc ho so Chrome tren may nay la doc duoc mat khau Tendoo cua moi khach. Cong tac tu bam Thanh toan MAC DINH TAT - khi tat thi CHUA bam, CHUA tao hoa don nao.",
   "permissions": [
     "storage",
@@ -56,6 +56,7 @@
         "tendoo/bamThanhToan.js",
         "chung/doiTaiKhoan.js",
         "chung/dauGio.js",
+        "chung/chupGiaoDien.js",
         "tendoo/nhanLenh.js",
         "tendoo/bangThu.js"
       ],

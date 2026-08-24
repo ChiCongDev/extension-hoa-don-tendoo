@@ -77,6 +77,7 @@ const MA = {
     KHONG_THAY_NUT_XAC_NHAN: 'KHONG_THAY_NUT_XAC_NHAN',
     CHUA_THIET_LAP_THUE: 'CHUA_THIET_LAP_THUE',
     BANG_LA_CHAN_DUONG: 'BANG_LA_CHAN_DUONG',
+    HOA_DON_DIEN_TU_TAT: 'HOA_DON_DIEN_TU_TAT',
 };
 
 const LA_NUT_THANH_TOAN = /thanh toán/i;
@@ -145,8 +146,15 @@ const CAC_CHU_DONG_THONG_BAO = [
 //
 // ⛔ MÁY KHÔNG TỰ BẤM "Mở ca". Mở ca là hành vi nghiệp vụ có hệ quả trên sổ
 // sách của chủ cửa hàng — không phải thứ một con máy tự quyết thay.
-const CHU_MO_CA = /^m[ởo]\s*ca$/i;
-const CHU_DONG_CA = /^[đd][óo]ng\s*ca$/i;
+// ⚠️ 22/08/2026 Tendoo THAY GIAO DIỆN ngay trên /sales/pos: nút này giờ ghi
+// "Vào ca", không còn là "Mở ca". Bản chốt hôm 21/08 dò đúng chữ cũ nên KHÔNG
+// bắt được — và rất có thể đó mới là thủ phạm thật của hai lượt «nút Thanh
+// toán đang bị khóa» sáng 21/08, làm mất trọn 12.000.000đ và 9.612.236đ.
+//
+// Vẫn SO CHỮ TUYỆT ĐỐI, chỉ thêm tên. Dò kiểu "chứa chữ ca" thì một dòng
+// hướng dẫn cũng khớp, và máy sẽ đẩy người dùng đi mở một cái ca đang mở sẵn.
+const CHU_MO_CA = /^(?:m[ởo]|v[àa]o)\s*ca$/i;
+const CHU_DONG_CA = /^(?:[đd][óo]ng|k[ếe]t\s*th[úu]c|ra)\s*ca$/i;
 
 /**
  * Trang có nút "Mở ca" đang hiện không — dấu hiệu ca ĐANG ĐÓNG.
@@ -155,12 +163,28 @@ const CHU_DONG_CA = /^[đd][óo]ng\s*ca$/i;
  * một nút "Đóng ca" hay một dòng hướng dẫn cũng khớp, và máy sẽ báo sai bệnh —
  * đẩy người dùng đi mở một cái ca đang mở sẵn.
  */
+/**
+ * Gỡ đồ trang trí ở HAI ĐẦU chuỗi trước khi so.
+ *
+ * ⚠️ Nút thật trên giao diện 22/08/2026 ghi "→ Vào ca" — có mũi tên đứng trước.
+ * Mẫu neo đầu chuỗi trượt sạch, và tôi chỉ phát hiện khi dựng lại đúng cái nút
+ * ấy để chạy thử. Nếu mũi tên là ảnh SVG thì không sao, nhưng nếu nó là KÝ TỰ
+ * thì chốt "ca chưa vào" chết câm — đúng lúc cần nó nhất.
+ *
+ * ⛔ CHỈ gỡ ở HAI ĐẦU. Không đụng vào giữa, nên "Hướng dẫn vào ca" vẫn trượt
+ * như phải thế — đây không phải nới lỏng.
+ */
+const gonVien = (t) => String(t || '').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+
 function timNutMoCa(tailieu) {
     const D = boDo();
     try {
         return [...tailieu.querySelectorAll('button, [role=button], a')]
             .filter(b => !(b.closest && b.closest('.ant-modal, [role=dialog], .ant-drawer')))
-            .find(b => { const t = D.gonChu(b); return CHU_MO_CA.test(t) && !CHU_DONG_CA.test(t); })
+            .find(b => {
+                const t = gonVien(D.gonChu(b));
+                return CHU_MO_CA.test(t) && !CHU_DONG_CA.test(t);
+            })
             || null;
     } catch (e) { return null; }
 }
@@ -170,7 +194,17 @@ const CHU_NUT_BO_QUA = 'Bỏ qua';
 // ⛔ NÚT NÀY KHÔNG BAO GIỜ ĐƯỢC BẤM. Bấm vào là rời khỏi trang bán hàng,
 // nhảy sang màn thiết lập thuế — đang giữa một lượt chạy hàng loạt thì hỏng hết.
 const CHU_NUT_THIET_LAP_THUE = 'Thiết lập quản lý thuế';
+/**
+ * Nhãn nút HỦY bảng xác nhận. Nới rộng được vì bấm hủy KHÔNG phát hành gì —
+ * ngược hẳn với nút "Xác nhận", chỗ duy nhất trong tệp này không được đoán.
+ *
+ * ⚠️ Bảng mới không có nút "Quay lại". Hủy không xong thì bảng nằm mở chình
+ * ình, và cửa "giỏ phải trống" chặn luôn mọi lượt sau — đúng vòng luẩn quẩn
+ * đã ăn trọn ngày 22/08/2026.
+ */
 const CHU_NUT_QUAY_LAI = 'Quay lại';
+const CAC_NHAN_HUY = [/^quays*l[ạa]i$/i, /^h[ủu]y( b[ỏo])?$/i, /^[đd][óo]ng$/i,
+                      /^cancel$/i, /^close$/i];
 const NhipDo = (typeof module !== 'undefined' && module.exports)
     ? require('../chung/nhipDo') : globalThis.HDT_NhipDo;
 
@@ -372,16 +406,24 @@ function keRuotBang(bang) {
     const phan = [];
     try {
         const D = boDo();
+        // ⚠️ XẾP NÚT CÓ CHỮ LÊN TRƯỚC. Bảng xác nhận mới có 8 nút "gợi ý tiền"
+        // toàn con số đứng trên cùng; cắt danh sách ở 8 là chúng chiếm sạch chỗ
+        // và NÚT THẬT bị cắt mất. Log 10:45 ngày 23/08/2026 kể ra đúng 8 con số
+        // rồi hết — làm tôi đi tìm nhầm bệnh mất một vòng.
+        const chiSo = (t) => MAU_TIEN_TRONG_BANG.test(t);
         const nut = [...bang.querySelectorAll('button, [role=button]')]
             .map(b => {
                 const t = D.gonChu(b);
-                if (!t) return '';
+                if (!t) return null;
                 const co = [];
                 if (b.disabled) co.push('khóa');
                 if (dangQuay(b)) co.push('ĐANG QUAY');
-                return '«' + t + '»' + (co.length ? '(' + co.join(',') + ')' : '');
+                return { t, chu: '«' + t + '»' + (co.length ? '(' + co.join(',') + ')' : '') };
             })
-            .filter(Boolean).slice(0, 8);
+            .filter(Boolean)
+            .sort((a, b) => (chiSo(a.t) ? 1 : 0) - (chiSo(b.t) ? 1 : 0))
+            .map(x => x.chu)
+            .slice(0, 14);
         if (nut.length) phan.push('nút trong bảng: ' + nut.join(' / '));
     } catch (e) { /* kể được gì hay nấy */ }
     try {
@@ -397,11 +439,18 @@ function keRuotBang(bang) {
     } catch (e) { /* kể được gì hay nấy */ }
     try {
         const g = kiemGhiNo(bang);
-        phan.push('Ghi nợ ' + (g.bat ? 'ĐANG BẬT' : 'tắt'));
+        // ⚠️ KHÔNG được viết "tắt" khi thật ra CHƯA KIỂM ĐƯỢC GÌ. Câu "Ghi nợ
+        // tắt" trong log 10:45 ngày 23/08/2026 là một câu SAI — lúc ấy ô đang
+        // tick, chỉ là bộ dò không nhìn thấy ô tick. Nó đánh lừa cả người đi sửa.
+        phan.push('Ghi nợ ' + (g.bat
+            ? (g.lyDo === 'KHONG_NHAN_RA' ? 'KHÔNG NHẬN RA (' + g.soCongTac + ' nút bật/tắt)'
+                                          : 'ĐANG BẬT')
+            : (g.daKiem ? 'đã kiểm: tắt' : 'KHÔNG thấy nút Ghi nợ nào để kiểm')));
     } catch (e) { /* kể được gì hay nấy */ }
     try {
         const o = timODaDua(bang);
-        if (o) phan.push('ô "Khách đã đưa" đang là "' + String(o.value) + '"');
+        phan.push(o ? 'ô tiền khách trả đang là "' + String(o.value) + '"'
+                    : 'KHÔNG tìm thấy ô tiền khách trả');
     } catch (e) { /* kể được gì hay nấy */ }
     return phan.join('; ');
 }
@@ -417,22 +466,141 @@ function tenCacNut(khoi) {
  * Đọc "Tổng cộng" TRONG bảng xác nhận — con số cuối cùng máy nhìn thấy trước
  * khi tiền thành hóa đơn. Khác với "Tổng thanh toán" ở chân giỏ.
  */
-function docTongTrongBang(bang) {
+/**
+ * Những chữ Tendoo có thể dùng cho dòng TỔNG trong bảng xác nhận.
+ *
+ * ⚠️ 22/08/2026 Tendoo thay giao diện và chữ "Tổng cộng" biến mất khỏi bảng —
+ * máy đọc ra `null` rồi dừng ở chốt cuối cùng trước khi ra tiền thật.
+ *
+ * ⚠️ VÌ SAO NỚI DANH SÁCH Ở ĐÂY LÀ AN TOÀN, TRONG KHI Ở CHÂN GIỎ THÌ KHÔNG.
+ * Chân giỏ: máy LẤY con số đó làm tổng -> đọc nhầm là ra hóa đơn sai tiền.
+ * Bảng xác nhận: máy chỉ SO SÁNH với con số đã tính từ trước -> đọc nhầm thì
+ * kết quả là "không khớp" rồi DỪNG, không đời nào thành hóa đơn sai.
+ *
+ * Điều kiện vẫn nguyên vẹn: "bảng phải hiện ĐÚNG con số này".
+ */
+const CAC_NHAN_TONG = [
+    // Xếp NHÃN DÀI TRƯỚC cho phần kể lại dễ đọc; mỗi nhãn vẫn dò độc lập.
+    // "Khách cần trả" và "Tổng tiền hàng" đọc được từ trang thật 22/08/2026 —
+    // danh sách cũ ghi "Khách phải trả", trang lại ghi "cần", nên trượt sạch.
+    'Tổng cộng', 'Tổng tiền hàng', 'Tổng tiền', 'Tổng thanh toán', 'Tổng đơn', 'Tổng',
+    'Thành tiền', 'Khách cần trả', 'Khách phải trả', 'Cần trả', 'Phải trả', 'Phải thu',
+    'Cần thanh toán',
+];
+
+/**
+ * SỐ TIỀN ĐỨNG NGAY SAU MỘT NHÃN trong một đoạn chữ. Không có thì null.
+ *
+ * ⚠️⚠️ CA HỎNG THẬT 22:33 ngày 22/08/2026, khách ki?n. Bảng xác nhận hiện ĐÚNG
+ * 1.450.000 ở khắp nơi mà máy vẫn từ chối phát hành. Con số nó đọc được là
+ * **1** — nhặt từ chữ "(1 sản phẩm)" trong nhãn "Tổng tiền hàng (1 sản phẩm)".
+ *
+ * Bản cũ dò bằng `nhan + '[^\d]{0,20}?([\d.,]+)'`, ba lỗi chồng lên nhau:
+ *   · `([\d.,]+)` nhận cả MỘT CHỮ SỐ TRẦN làm tiền. Tiền Việt trên POS luôn có
+ *     dấu nhóm nghìn — "1" không bao giờ là một khoản tiền.
+ *   · `[^\d]` KHÔNG vượt qua nổi một chữ số. Gặp "1" trong "(1 sản phẩm)" là
+ *     tắc đường, không đời nào với tới 1.450.000 đứng ngay sau đó.
+ *   · rồi `break` chốt luôn con số rác, không thử phần tử nào khác nữa.
+ *
+ * Cách chữa: tìm nhãn, rồi QUÉT TỚI TRƯỚC lấy số CÓ HÌNH DẠNG TIỀN — ít nhất
+ * một nhóm ba chữ số. Chữ số lẻ nằm chen giữa không còn chặn đường được nữa.
+ *
+ * ⚠️ Tầm quét có giới hạn: nhãn cách con số quá xa thì chúng chẳng liên quan
+ * gì tới nhau, và vơ bừa là đọc tiền của dòng khác.
+ */
+const MAU_TIEN_SAU_NHAN = /\d{1,3}(?:[.,]\d{3})+/;
+const XA_NHAT_SAU_NHAN = 60;
+
+function soTienSauNhan(chu, nhan) {
     const D = boDo();
-    const cac = [...bang.querySelectorAll('*')]
-        .filter(e => /Tổng cộng/i.test(e.textContent || ''))
-        .sort((a, b) => a.children.length - b.children.length);
-    for (const e of cac) {
-        const m = D.gonChu(e).match(/Tổng cộng[^\d]*([\d.,]+)/i);
-        if (m) {
-            const so = D.docSoTien(m[1]);
-            if (so != null) return so;
-        }
-    }
-    return null;
+    const t = String(chu == null ? '' : chu);
+    const i = t.toLowerCase().indexOf(String(nhan).toLowerCase());
+    if (i < 0) return null;
+    const m = t.slice(i + String(nhan).length, i + String(nhan).length + XA_NHAT_SAU_NHAN)
+        .match(MAU_TIEN_SAU_NHAN);
+    return m ? D.docSoTien(m[0]) : null;
 }
 
-const CHU_KHACH_DA_DUA = /kh[áa]ch\s*[đd][ãa]\s*[đd][ưu]a/i;
+/** Mọi cặp (nhãn, số tiền) đọc được theo danh sách nhãn, không trùng. */
+function docCacTongTheoNhan(bang) {
+    const D = boDo();
+    const ra = [];
+    if (!bang || !bang.querySelectorAll) return ra;
+    for (const nhan of CAC_NHAN_TONG) {
+        const cac = [...bang.querySelectorAll('*')]
+            .filter(e => e.textContent && e.textContent.includes(nhan))
+            .sort((a, b) => a.children.length - b.children.length);
+        for (const e of cac) {
+            const so = soTienSauNhan(D.gonChu(e), nhan);
+            if (so == null) continue;      // lá chỉ có chữ -> thử tới khối cha
+            if (!ra.some(x => x.nhan === nhan && x.so === so)) ra.push({ nhan, so });
+            break;
+        }
+    }
+    return ra;
+}
+
+/** Số đọc được đầu tiên — dùng để KỂ LẠI, không dùng để quyết định. */
+function docTongTrongBang(bang) {
+    const cac = docCacTongTheoNhan(bang);
+    return cac.length ? cac[0].so : null;
+}
+
+/**
+ * BẢNG CÓ ĐANG HIỆN ĐÚNG SỐ TIỀN NÀY KHÔNG.
+ *
+ * ⛔ ĐÂY MỚI LÀ CÂU HỎI THẬT của chốt chặn — không phải "tổng trong bảng là
+ * bao nhiêu". Hỏi đúng câu thì nới danh sách nhãn không nới lỏng được gì.
+ */
+function coTongDung(bang, mongDoi) {
+    if (!Number.isFinite(Number(mongDoi))) return false;
+    return docCacTongTheoNhan(bang).some(x => x.so === Number(mongDoi));
+}
+
+/**
+ * KỂ RA MỌI SỐ TIỀN TRONG BẢNG, kèm chữ đứng ngay trước nó.
+ *
+ * ⚠️ Đây là thứ trả lời cho chính danh sách nhãn ở trên. Đoán trượt tên nhãn
+ * thì lần chạy tới log tự nói ra tên đúng — khỏi chụp ảnh, khỏi mò. Lần thứ
+ * năm tôi vá loại lỗ hổng "máy biết mà không chịu kể".
+ */
+function keCacSoTrongBang(bang) {
+    try {
+        const D = boDo();
+        const cap = [];
+        let nhan = '';
+        for (const e of bang.querySelectorAll('*')) {
+            if (e.children.length) continue;              // chỉ xét phần tử lá
+            const t = D.gonChu(e);
+            if (!t) continue;
+            if (MAU_TIEN_TRONG_BANG.test(t)) {
+                cap.push((nhan ? '«' + nhan.slice(0, 40) + '» ' : '') + t);
+                nhan = '';
+            } else {
+                nhan = t;
+            }
+        }
+        return cap.length ? cap.slice(0, 12).join(' · ') : 'không thấy số tiền nào';
+    } catch (e) { return 'không đọc được'; }
+}
+
+/** Số tiền đứng MỘT MÌNH trong ô. */
+const MAU_TIEN_TRONG_BANG = /^-?\d{1,3}(?:[.,]\d{3})+\s*(?:đ|vnd)?$/i;
+
+/**
+ * NHÃN CỦA Ô "TIỀN KHÁCH TRẢ" — Tendoo đã đổi chữ ít nhất một lần.
+ *
+ * ⚠️ CA HỎNG THẬT 10:45 ngày 23/08/2026, khách c?ng. Trang đổi nhãn từ
+ * "Khách đã đưa" sang "Khách thanh toán", mẫu cũ chỉ dò "khách đã đưa" nên
+ * trượt, ô nằm TRỐNG. Tendoo hiểu là khách đưa 0đ -> tự tick "Ghi nợ" 1.450.000
+ * -> mà khách là "Khách lẻ" (vô danh, không ghi nợ được) -> bấm "Xác nhận" thì
+ * Tendoo NHẬN rồi LẶNG LẼ TỪ CHỐI, không một câu báo lỗi. Giỏ còn nguyên, bảng
+ * còn mở, máy đành TREO lệnh — trạng thái tốn công người nhất trong cả dự án.
+ *
+ * Một ô bỏ trống, ba tầng hậu quả. Nới nhãn ở đây rẻ hơn nhiều so với việc đó.
+ */
+const CHU_KHACH_DA_DUA =
+    /kh[áa]ch\s*(?:[đd][ãa]\s*[đd][ưu]a|thanh\s*to[áa]n|tr[ảa])|ti[ềe]n\s*kh[áa]ch\s*[đd][ưu]a/i;
 
 /**
  * Ô "Khách đã đưa" trong bảng xác nhận — tìm THEO NHÃN, không lấy ô đầu tiên.
@@ -490,11 +658,43 @@ async function dienKhachDaDua(bang, mongDoi, nghi) {
 
 const CHU_GHI_NO = /ghi\s*n[ợo]/i;
 
-/** Một công tắc có đang BẬT không — theo cả hai cách Ant Design đánh dấu. */
+/**
+ * MỌI KIỂU NÚT BẬT/TẮT — công tắc gạt VÀ ô tick.
+ *
+ * ⚠️ CA HỎNG THẬT 23/08/2026. Bản cũ chỉ hỏi `[role=switch], .ant-switch`.
+ * Tendoo đổi "Ghi nợ" từ công tắc gạt sang Ô TICK VUÔNG, và mẫu ấy không khớp
+ * cái nào — nên hàm trả về "không có công tắc nào", rồi tầng trên đem cái
+ * "không tìm thấy" khai thành "Ghi nợ tắt". Log 10:45 ngày 23/08 ghi đúng câu
+ * ấy trong khi ẢNH CHỤP CHO THẤY Ô ĐANG TICK.
+ *
+ * Máy nói chắc nịch một câu sai là loại hỏng tệ nhất — nó đánh lừa cả người
+ * đang đi sửa nó.
+ */
+const CAC_MAU_CONG_TAC = '[role=switch], .ant-switch, [role=checkbox], '
+    + '.ant-checkbox, .ant-checkbox-wrapper, input[type=checkbox]';
+
+/** Mọi nút bật/tắt trong một khối, đã bỏ trùng (ô tick lồng trong wrapper). */
+function cacCongTac(khoi) {
+    const cac = [...khoi.querySelectorAll(CAC_MAU_CONG_TAC)];
+    // `.ant-checkbox-wrapper > .ant-checkbox > input` là BA phần tử của CÙNG
+    // một ô tick. Đếm cả ba thì "khối có nhiều hơn một công tắc" bắn oan, và
+    // chốt sẽ từ chối phát hành với lý do sai hoàn toàn.
+    return cac.filter(e => !cac.some(k => k !== e && k.contains && k.contains(e)));
+}
+
+/** Một nút bật/tắt có đang BẬT không — theo mọi cách Ant Design đánh dấu. */
 function congTacBat(ct) {
     if (!ct) return false;
     if (ct.getAttribute('aria-checked') === 'true') return true;
-    return /ant-switch-checked/.test(String(ct.className || ''));
+    const lop = String(ct.className || '');
+    if (/ant-switch-checked|ant-checkbox-checked|ant-checkbox-wrapper-checked/.test(lop)) return true;
+    // Ô tick thật: hỏi thẳng thuộc tính `checked` của chính nó hoặc của ô con.
+    try {
+        if (ct.checked === true) return true;
+        const o = ct.querySelector && ct.querySelector('input[type=checkbox]');
+        if (o && o.checked === true) return true;
+    } catch (e) { /* không hỏi được thì thôi */ }
+    return false;
 }
 
 /**
@@ -522,26 +722,34 @@ function ghiNoDangBat(bang) {
 /**
  * Như trên, nhưng nói RÕ VÌ SAO — "đang bật thật" và "không nhận ra công tắc"
  * là hai chuyện khác hẳn, và người dùng phải chữa theo hai cách khác hẳn.
- * @returns {{bat: boolean, lyDo: string}}
+ *
+ * ⚠️ BA TRẠNG THÁI, KHÔNG PHẢI HAI. Bản cũ gộp "không tìm thấy nút nào" vào
+ * chung với "đã kiểm và thấy tắt", nên lời kể ghi thẳng "Ghi nợ tắt" trong khi
+ * thật ra nó CHƯA HỀ KIỂM ĐƯỢC GÌ. Log 10:45 ngày 23/08/2026 nói đúng câu ấy
+ * còn ảnh chụp cho thấy ô đang tick. `daKiem` là để không bao giờ nói bừa nữa.
+ *
+ * @returns {{bat: boolean, lyDo: string, daKiem: boolean, soCongTac?: number}}
  */
 function kiemGhiNo(bang) {
     const D = boDo();
-    const cacCt = [...bang.querySelectorAll('[role=switch], .ant-switch')];
-    if (!cacCt.length) return { bat: false, lyDo: '' };   // không có công tắc nào
+    const cacCt = cacCongTac(bang);
+    // Không một nút bật/tắt nào trong bảng -> bảng này không có mục Ghi nợ
+    // (giao diện cũ). Cho đi, NHƯNG ghi rõ là chưa kiểm được gì.
+    if (!cacCt.length) return { bat: false, lyDo: 'KHONG_CO_NUT', daKiem: false };
 
-    // Tìm công tắc nằm cùng khối với chữ "Ghi nợ". Đi ngược lên từng cấp cha,
-    // lấy khối gần nhất có chứa nhãn — không quét cả bảng để khỏi vơ nhầm.
+    // Tìm nút nằm cùng khối với chữ "Ghi nợ". Đi ngược lên từng cấp cha, lấy
+    // khối gần nhất có chứa nhãn — không quét cả bảng để khỏi vơ nhầm.
     for (const ct of cacCt) {
         let o = ct.parentElement;
         for (let cap = 0; o && cap < 4; cap++, o = o.parentElement) {
             const chu = D.gonChu(o);
             if (!CHU_GHI_NO.test(chu)) continue;
-            // Khối này có nhãn Ghi nợ. Nhưng nếu nó chứa NHIỀU công tắc thì
+            // Khối này có nhãn Ghi nợ. Nhưng nếu nó chứa NHIỀU nút bật/tắt thì
             // không phân biệt được cái nào của nhãn nào -> không đoán.
-            if (o.querySelectorAll('[role=switch], .ant-switch').length !== 1) break;
+            if (cacCongTac(o).length !== 1) break;
             return congTacBat(ct)
-                ? { bat: true, lyDo: 'CT_BAT' }
-                : { bat: false, lyDo: '' };
+                ? { bat: true, lyDo: 'CT_BAT', daKiem: true }
+                : { bat: false, lyDo: '', daKiem: true };
         }
     }
 
@@ -550,10 +758,84 @@ function kiemGhiNo(bang) {
     return { bat: true, lyDo: 'KHONG_NHAN_RA', soCongTac: cacCt.length };
 }
 
+const CHU_HOA_DON_DIEN_TU = /h[óo]a\s*đ[ơo]n\s*đi[ệe]n\s*t[ửu]/i;
+// Chữ trên nút chỉ có khi công tắc BẬT — xem chú thích kiemHoaDonDienTu().
+const CHU_XUAT_HOA_DON = /xu[ấa]t\s*h[óo]a\s*đ[ơo]n/i;
+
+/**
+ * CÔNG TẮC "HÓA ĐƠN ĐIỆN TỬ" CÓ ĐANG BẬT KHÔNG — chốt chống NÓI DỐI.
+ *
+ * ⚠️⚠️ VÌ SAO ĐÂY LÀ CHỐT QUAN TRỌNG NHẤT TỆP NÀY.
+ * Ảnh chụp trang thật 22/08/2026, hai tấm cách nhau vài phút:
+ *
+ *   công tắc BẬT  -> nút đỏ ghi "Thanh toán & Xuất hóa đơn (F1)"
+ *   công tắc TẮT  -> nút đỏ ghi "Thanh toán (F1)"          <-- KHÔNG xuất gì cả
+ *
+ * Tắt mà cứ bấm thì đơn VẪN CHỐT, máy vẫn ghi daBamThanhToan:true, sổ Sell vẫn
+ * nhận dòng "đã ra hóa đơn", Telegram vẫn nhắn "đã ra hóa đơn" — mà KHÔNG có
+ * hóa đơn nào lên cơ quan thuế. Máy không dừng, không kêu, nó NÓI DỐI trơn tru.
+ * Đó là loại hỏng tệ nhất trong dự án này, và chính là thứ lichSuChay.js cảnh
+ * báo ngay đầu tệp: "XONG KHÔNG ĐỒNG NGHĨA VỚI ĐÃ RA HÓA ĐƠN".
+ *
+ * ⚠️ TÌM THEO NHÃN, KHÔNG LẤY CÔNG TẮC ĐẦU TIÊN — đúng bài học đã trả giá ngày
+ * 19/08/2026 với công tắc "Ghi nợ": vơ đại cái gặp trước rồi từ chối phát hành
+ * với lý do sai hoàn toàn, hai khách liền.
+ *
+ * ⚠️ KHÔNG NHẬN RA -> COI NHƯ TẮT, tức là TỪ CHỐI. Ngả về phía an toàn: dừng
+ * oan thì mất một lượt, còn chốt đơn mà tưởng đã xuất hóa đơn thì sổ sách sai
+ * và không ai biết để sửa.
+ *
+ * ⛔ MÁY KHÔNG TỰ BẬT CÔNG TẮC. Đó là quyết định có hệ quả thuế, cùng lý do với
+ * việc không tự bấm "Vào ca".
+ *
+ * @returns {{bat: boolean, lyDo: string, soCongTac?: number}}
+ */
+function kiemHoaDonDienTu(tailieu) {
+    const D = boDo();
+    const trongBang = (e) => !!(e.closest
+        && e.closest('.ant-modal, [role=dialog], .ant-drawer'));
+    // Công tắc ở CHÂN GIỎ, không phải trong bảng nào. Bảng xác nhận có công tắc
+    // "Ghi nợ" riêng — vơ nhầm sang đó là trả lời câu hỏi khác hẳn.
+    const cacCt = [...tailieu.querySelectorAll('[role=switch], .ant-switch')]
+        .filter(ct => !trongBang(ct));
+
+    for (const ct of cacCt) {
+        let o = ct.parentElement;
+        for (let cap = 0; o && cap < 4; cap++, o = o.parentElement) {
+            const chu = D.gonChu(o);
+            if (!CHU_HOA_DON_DIEN_TU.test(chu)) continue;
+            // Khối có nhãn nhưng chứa NHIỀU công tắc thì không biết cái nào của
+            // nhãn nào -> không đoán.
+            if (o.querySelectorAll('[role=switch], .ant-switch').length !== 1) break;
+            return congTacBat(ct)
+                ? { bat: true, lyDo: '' }
+                : { bat: false, lyDo: 'CT_TAT' };
+        }
+    }
+
+    // ⚠️ KHÔNG THẤY CÔNG TẮC NÀO gắn với nhãn — nhưng chưa chắc đã hỏng: giao
+    // diện CŨ không có công tắc này, và ở đó nút "Thanh toán (F1)" vẫn xuất hóa
+    // đơn qua bảng xác nhận. Nên hỏi DẤU HIỆU THỨ HAI: chữ trên chính cái nút.
+    // Có "Xuất hóa đơn" -> chắc chắn đang ở chế độ xuất, cho đi.
+    const nut = timNutThanhToan(tailieu);
+    if (nut && CHU_XUAT_HOA_DON.test(D.gonChu(nut))) return { bat: true, lyDo: '' };
+    // Không có công tắc nào trên trang -> giao diện cũ, giữ nguyên nếp cũ.
+    if (!cacCt.length) return { bat: true, lyDo: '' };
+    return { bat: false, lyDo: 'KHONG_NHAN_RA', soCongTac: cacCt.length };
+}
+
 /** Hủy sạch: bấm "Quay lại". Không có nút thì thôi, còn hơn bấm bừa. */
 function huyBang(bang) {
+    const D = boDo();
     const nut = timNutTheoChu(bang, CHU_NUT_QUAY_LAI);
     if (nut) { nut.click(); return true; }
+    // Không có "Quay lại" -> thử các nhãn hủy khác, rồi mới tới dấu ✕ của Ant.
+    const khac = [...bang.querySelectorAll('button, [role=button]')]
+        .find(b => CAC_NHAN_HUY.some(r => r.test(D.gonChu(b))));
+    if (khac) { khac.click(); return true; }
+    const x = bang.querySelector(
+        '.ant-modal-close, .ant-drawer-close, [aria-label="Close"], [aria-label="close"]');
+    if (x) { x.click(); return true; }
     return false;
 }
 
@@ -605,6 +887,30 @@ function taoLuot() {
                 ok: false, ma: MA.TONG_KHONG_KHOP,
                 thongBao: `Tổng trên màn hình (${tongTrenManHinh}) không khớp tổng đã tính `
                     + `(${tuyChon.tongMongDoi}) — KHÔNG bấm Thanh toán.`,
+            };
+        }
+
+        // ── ĐK 3.5: PHẢI ĐANG Ở CHẾ ĐỘ XUẤT HÓA ĐƠN ────────────────────────
+        //
+        // ⚠️ Đặt TRƯỚC ĐK 4 chứ không phải sau: mọi đường dẫn tới cú bấm đều đi
+        // qua đây, và chốt này không đụng vào trang nên xếp sớm bao nhiêu cũng
+        // an toàn. Xếp sau là có ngày một nhánh trả về sớm đi vòng qua nó.
+        const hddt = kiemHoaDonDienTu(tailieu);
+        if (!hddt.bat) {
+            return {
+                ok: false, ma: MA.HOA_DON_DIEN_TU_TAT,
+                thongBao: hddt.lyDo === 'KHONG_NHAN_RA'
+                    ? 'KHÔNG nhận ra công tắc "Hóa đơn điện tử" ở chân giỏ (thấy '
+                        + (hddt.soCongTac || 0) + ' công tắc nhưng không cái nào gắn với nhãn ấy), '
+                        + 'và nút bấm cũng không ghi "Xuất hóa đơn". Giao diện Tendoo có thể vừa '
+                        + 'đổi. Máy KHÔNG bấm khi chưa chắc mình đang ở chế độ xuất hóa đơn — '
+                        + 'chốt đơn mà không ra hóa đơn thì sổ sách sai và không ai biết để sửa. '
+                        + 'CHƯA phát hành hóa đơn nào.'
+                    : 'CÔNG TẮC "Hóa đơn điện tử" ở chân giỏ đang TẮT. Bấm lúc này chỉ chốt đơn '
+                        + 'chứ KHÔNG xuất hóa đơn nào lên cơ quan thuế, trong khi máy vẫn ghi là '
+                        + 'đã ra hóa đơn — sai sổ sách mà không ai biết. Hãy sang tab Tendoo BẬT '
+                        + 'công tắc "Hóa đơn điện tử" rồi chạy lại. (Máy KHÔNG tự bật — đó là '
+                        + 'quyết định có hệ quả thuế của bạn.) CHƯA phát hành hóa đơn nào.',
             };
         }
 
@@ -931,16 +1237,16 @@ function taoLuot() {
         // Dùng đúng lối chờ sẵn có của tệp này (vòng nghỉ theo nhịp), không
         // mượn helper ở tệp khác — mượn nhầm thứ không tồn tại thì ReferenceError
         // xảy ra ĐÚNG LÚC vừa bấm Thanh toán, chỗ nguy hiểm nhất cả luồng.
-        for (let da = 0; da < hanBang && docTongTrongBang(bang) !== mongDoi; da += nhip) {
+        for (let da = 0; da < hanBang && !coTongDung(bang, mongDoi); da += nhip) {
             await nghi(nhip);
         }
-        const tongBang = docTongTrongBang(bang);
-        if (tongBang == null || tongBang !== mongDoi) {
+        if (!coTongDung(bang, mongDoi)) {
             huyBang(bang);
             return {
                 ok: false, ma: MA.BANG_SAI_TONG,
-                thongBao: `Tổng cộng trong bảng xác nhận (${tongBang}) không khớp tổng đã tính `
-                    + `(${mongDoi}) — đã bấm Quay lại, CHƯA phát hành gì.`,
+                thongBao: 'Bảng xác nhận KHÔNG hiện đúng số tiền đã tính ('
+                    + Number(mongDoi).toLocaleString('vi-VN') + 'đ) — đã bấm Quay lại, CHƯA '
+                    + 'phát hành gì. Máy nhìn thấy trong bảng: ' + keCacSoTrongBang(bang) + '.',
             };
         }
 
@@ -953,11 +1259,11 @@ function taoLuot() {
             // ⚠️ ĐỌC LẠI TỔNG. Gõ nhầm vào ô khác (ví dụ ô giảm giá) là tổng
             // đổi ngay — mà tổng mới sai thì hóa đơn sai tiền. Chờ tới khi
             // bảng vẽ xong rồi mới kết luận.
-            for (let da = 0; da < hanBang && docTongTrongBang(bang) !== mongDoi; da += nhip) {
+            for (let da = 0; da < hanBang && !coTongDung(bang, mongDoi); da += nhip) {
                 await nghi(nhip);
             }
             const tongSau = docTongTrongBang(bang);
-            if (tongSau !== mongDoi) {
+            if (!coTongDung(bang, mongDoi)) {
                 huyBang(bang);
                 return {
                     ok: false, ma: MA.BANG_SAI_TONG,
@@ -1119,8 +1425,11 @@ function taoLuot() {
 }
 
 const API = { taoLuot, timNutThanhToan, timBangXacNhan, timBangChanDuong, timNutTheoChu,
-              timNutDongThongBao, tenCacNut, docDuongDan, keLaiManHinh, chuThoiGian,
+              timNutDongThongBao, tenCacNut, docDuongDan, keLaiManHinh, chuThoiGian, gonVien,
               conTrongTrang, dangQuay, keRuotBang, timNutMoCa,
+              kiemHoaDonDienTu, congTacBat, cacCongTac,
+              docCacTongTheoNhan, coTongDung, keCacSoTrongBang, CAC_NHAN_TONG,
+              soTienSauNhan,
               docTongTrongBang, ghiNoDangBat, kiemGhiNo, timODaDua, dienKhachDaDua,
               dangHien, MA, HAN_CHO_BANG_MS };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

@@ -202,11 +202,15 @@ test('⭐⭐ bảng báo lỗi đỏ thì phải CHÉP RA nguyên văn', async (
         'không chép dòng lỗi của bảng: ' + kq.thongBao);
 });
 
-test('⭐ kể cả trạng thái nút, Ghi nợ và ô "Khách đã đưa"', async () => {
+test('⭐ kể cả trạng thái nút, Ghi nợ và ô tiền khách trả', async () => {
     const { kq } = await chayMotLuot({ xacNhanNuot: true });
     assert.match(kq.thongBao, /nút trong bảng:.*«Xác nhận»/, kq.thongBao);
-    assert.match(kq.thongBao, /Ghi nợ (tắt|ĐANG BẬT)/, kq.thongBao);
-    assert.match(kq.thongBao, /ô "Khách đã đưa" đang là/, kq.thongBao);
+    // ⚠️ PHẢI NÓI RÕ LÀ ĐÃ KIỂM. Bản cũ viết cụt lủn "Ghi nợ tắt" cho CẢ HAI
+    // trường hợp — đã kiểm và thấy tắt, lẫn không tìm thấy nút nào để mà kiểm.
+    // Log 10:45 ngày 23/08/2026 ghi đúng câu ấy trong khi ảnh chụp cho thấy ô
+    // ĐANG TICK: một câu SAI nằm ngay trong bằng chứng, đánh lừa cả người đi sửa.
+    assert.match(kq.thongBao, /Ghi nợ đã kiểm: tắt/, kq.thongBao);
+    assert.match(kq.thongBao, /ô tiền khách trả đang là/, kq.thongBao);
 });
 
 test('⭐ nút đang quay thì phải ghi ĐANG QUAY', async () => {

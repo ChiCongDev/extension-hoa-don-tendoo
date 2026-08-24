@@ -56,6 +56,11 @@ function locDuoc(k) {
  * @returns {Promise<{ok:boolean, ma?:string, dong?:Array, ngay?:{tu:string,den:string},
  *                    thongBao?:string}>}
  */
+// Mạng chập thì thử lại — xem chú thích trong vòng lặp bên dưới.
+const SO_LAN_THU_MANG = 3;
+const NGHI_GIUA_LAN_MS = 1500;
+const nguNghi = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function docBangQuaToken(caiDat, layFetch) {
     const c = caiDat || {};
     const url = String(c.sellUrl || '').trim().replace(/\/+$/, '');
@@ -80,14 +85,43 @@ async function docBangQuaToken(caiDat, layFetch) {
         // của trang báo cáo. Gửi vào một loại là số lệch với những gì bạn nhìn
         // thấy trên trang.
         const duong = `${url}${DUONG_BANG}?loai=hom_nay&trang=${trang}&so_ban_ghi=${MOI_TRANG}`;
+        // ── THỬ LẠI KHI MẠNG CHẬP ───────────────────────────────────────────
+        //
+        // ⚠️ CA HỎNG THẬT 21/08/2026, mốc 18:10: «Không gọi được bongtom.store:
+        // Failed to fetch» -> CẢ LƯỢT không chạy, khách Bích Ngọc S1 chưa chạy
+        // tới. Năm phút sau (18:15) mọi thứ lại chạy sạch. Mạng chập đúng một
+        // cái là mất trọn một mốc giờ, mà không có lấy một lượt thử lại.
+        //
+        // ⚠️ VÌ SAO THỬ LẠI Ở ĐÂY LÀ AN TOÀN TUYỆT ĐỐI: đây là việc CHỈ ĐỌC —
+        // một lời gọi GET để lấy doanh thu. Nó không bấm gì, không bỏ gì vào
+        // giỏ, không phát hành gì. Gọi mười lần cũng không sinh nổi một đồng
+        // hóa đơn. Khác hẳn mọi chỗ thử lại khác trong dự án này.
+        //
+        // ⛔ CHỈ THỬ LẠI KHI FETCH NÉM (mất mạng). Máy chủ TRẢ LỜI mà từ chối
+        // (403 sai token, 404 sai địa chỉ) thì thử lại vô nghĩa — và còn giấu
+        // mất lỗi thật sau mấy giây chờ.
         let tra;
-        try {
-            tra = await fetchDung(duong, {
-                headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + token },
-            });
-        } catch (e) {
+        let loiMang = null;
+        for (let lan = 0; lan < SO_LAN_THU_MANG; lan++) {
+            try {
+                tra = await fetchDung(duong, {
+                    headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + token },
+                });
+                loiMang = null;
+                break;
+            } catch (e) {
+                loiMang = e;
+                // Khe cho bài test rút ngắn giấc nghỉ — mặc định vẫn là 1,5 giây.
+                const nghiMs = Number((c || {}).nghiGiuaLanMs);
+                if (lan + 1 < SO_LAN_THU_MANG) {
+                    await nguNghi(Number.isFinite(nghiMs) && nghiMs >= 0 ? nghiMs : NGHI_GIUA_LAN_MS);
+                }
+            }
+        }
+        if (loiMang) {
             return { ok: false, ma: 'KHONG_GOI_DUOC',
-                     thongBao: `Không gọi được bongtom.store ở ${url}: ${(e && e.message) || e}` };
+                     thongBao: `Không gọi được bongtom.store ở ${url} sau ${SO_LAN_THU_MANG} lần thử: `
+                         + `${(loiMang && loiMang.message) || loiMang}` };
         }
 
         if (!tra || !tra.ok) {

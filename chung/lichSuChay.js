@@ -82,6 +82,11 @@ function taoBanGhi(d = {}) {
             maLenh: chuoi(l.id),
             tenKH: chuoi(l.tenKH),
             soTien: Number(l.soTien) || 0,
+            // SỐ NGƯỜI DÙNG TỰ ĐẶT trong ô "tiền/ngày", 0 nếu không đặt. Bản ghi
+            // là nguồn DUY NHẤT của đường "gửi lại ở cuối loạt"; không mang theo
+            // thì đường ấy không biết đây là tờ tự chọn hay theo hệ thống, và
+            // Sell xếp nhầm cột.
+            soTienDat: Number(l.soTienDat) || 0,
             ket: r.daBamThanhToan ? KET.RA_HOA_DON : KET.VAO_GIO,
             tongTendoo: r.tong == null ? null : Number(r.tong),
             lech: r.lech == null ? null : Number(r.lech),
@@ -95,6 +100,7 @@ function taoBanGhi(d = {}) {
         ghi(l.maKH, {
             maLenh: chuoi(l.id),
             tenKH: chuoi(l.tenKH), soTien: Number(l.soTien) || 0,
+            soTienDat: Number(l.soTienDat) || 0,
             ket: KET.LOI, maLoi: chuoi(l.maLoi), chiTiet: chuoi(l.thongBao),
         });
     }
@@ -105,6 +111,7 @@ function taoBanGhi(d = {}) {
         ghi(l.maKH, {
             maLenh: chuoi(l.id),
             tenKH: chuoi(l.tenKH), soTien: Number(l.soTien) || 0,
+            soTienDat: Number(l.soTienDat) || 0,
             ket: KET.TREO, chiTiet: chuoi(l.thongBao),
         });
     }

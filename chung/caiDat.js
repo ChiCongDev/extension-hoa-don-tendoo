@@ -31,14 +31,7 @@ const MAC_DINH = {
     // `urlBang` là địa chỉ trang báo cáo lúc người dùng lưu lịch. Tới giờ, máy
     // cần mở lại ĐÚNG trang đó để đọc số mới — bongtom.store và 127.0.0.1:8000
     // là hai nơi khác nhau, đoán bừa là đọc nhầm bảng của môi trường khác.
-    // `soDuTuNgay`: mốc đầu của khoảng "TẤT CẢ THỜI GIAN" khi hỏi số dư chưa
-    // xuất hóa đơn. Bên Sell, con số ấy CỘNG DỒN TRONG KHOẢNG ĐANG XEM chứ
-    // không mang số dư từ trước sang — nên hỏi sai khoảng là ra sai trần.
-    //
-    // Vì sao phải cho đặt chứ không đóng đinh "từ năm 2000": API trả về MỘT
-    // DÒNG CHO MỖI NGÀY trong khoảng, nên khoảng vô lý là bắt Sell dựng cả
-    // chục nghìn dòng mỗi lần hỏi.
-    henGio: { bat: false, moc: [], khach: [], urlBang: '', soDuTuNgay: '' },
+    henGio: { bat: false, moc: [], khach: [], urlBang: '' },
     // Nơi đẩy kết quả về cho trang "Kế toán tổng hợp" bên Sell. Để trống thì
     // không đẩy — người dùng có thể cố ý không dùng trang kế toán.
     sellUrl: '',
@@ -81,34 +74,12 @@ function chuanDungSai(v) {
 }
 
 /**
- * Danh sách khách của lịch hẹn: mã, tên, và MỐC GIỜ RIÊNG (tùy chọn).
- *
- * ⚠️ Khách có `moc` riêng thì GIỜ CHUNG KHÔNG đụng tới nữa (xem henGio.gomTheoMoc).
- * Bỏ trùng theo mã, giữ nguyên thứ tự.
- */
-/**
  * SỐ TIỀN XUẤT MỖI NGÀY — phải là số nguyên DƯƠNG. Không phải thì trả null.
  *
  * ⚠️ Nhận cả chuỗi có dấu chấm/phẩy nhóm nghìn ("1.500.000") vì người dùng gõ
  * tay vào ô trên trang. Nhưng số âm, số 0, số lẻ đồng và chữ rác đều BỊ BỎ:
  * con số này đi thẳng vào hóa đơn thuế, không có chỗ cho "gần đúng".
  */
-/**
- * NGÀY dạng YYYY-MM-DD. Gõ sai thì trả chuỗi rỗng, KHÔNG đoán.
- *
- * ⚠️ Rỗng nghĩa là "chưa đặt mốc số dư", và lúc ấy tính năng tự-đặt-số-tiền
- * phải DỪNG chứ không được tự chọn bừa một ngày. Chọn bừa là hỏi sai khoảng,
- * ra sai trần, rồi xuất vượt số.
- */
-function chuanNgayISO(v) {
-    const chu = String(v == null ? '' : v).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(chu)) return '';
-    const d = new Date(chu + 'T00:00:00Z');
-    if (Number.isNaN(d.getTime())) return '';
-    // Chặn "2026-02-31": Date tự trôi sang tháng sau, nên phải đọc ngược lại.
-    return d.toISOString().slice(0, 10) === chu ? chu : '';
-}
-
 function chuanSoTienNgay(v) {
     if (v == null || v === '') return null;
     const chu = String(v).trim();
@@ -126,6 +97,13 @@ function chuanSoTienNgay(v) {
     return so;
 }
 
+/**
+ * Danh sách khách của lịch hẹn: mã, tên, MỐC GIỜ RIÊNG và SỐ TIỀN MỖI NGÀY
+ * (cả hai đều tùy chọn).
+ *
+ * ⚠️ Khách có `moc` riêng thì GIỜ CHUNG KHÔNG đụng tới nữa (xem henGio.gomTheoMoc).
+ * Bỏ trùng theo mã, giữ nguyên thứ tự.
+ */
 function chuanKhach(ds, HenGio) {
     if (!Array.isArray(ds)) return [];
     const thay = new Set();
@@ -139,8 +117,8 @@ function chuanKhach(ds, HenGio) {
         // giờ chung còn hơn giữ một mốc vô nghĩa rồi khách không bao giờ chạy.
         const moc = HenGio ? HenGio.chuanMotMoc(k && k.moc) : null;
         if (moc) o.moc = moc;
-        // `soTienNgay`: SỐ TIỀN XUẤT MỖI NGÀY do người dùng tự đặt, thay cho
-        // doanh số hôm nay. Trần cứng vẫn là số dư chưa xuất hóa đơn.
+        // `soTienNgay`: SỐ TIỀN XUẤT MỖI NGÀY do người dùng tự đặt, thay HẲN cho
+        // doanh số hôm nay. KHÔNG so với dữ liệu nào — chủ dự án chốt 25/08/2026.
         //
         // ⚠️ GÕ SAI THÌ BỎ HẲN, y như giờ riêng ở trên — ô rỗng nghĩa là "chạy
         // nếp cũ", và nếp cũ thì đã chạy đúng. Giữ lại một con số rác ở đây là
@@ -200,8 +178,6 @@ function gop(cu, tin, HenGio) {
             moc,
             khach: 'khach' in h ? chuanKhach(h.khach, HenGio) : (cuH.khach || []),
             urlBang: 'urlBang' in h ? String(h.urlBang || '') : String(cuH.urlBang || ''),
-            soDuTuNgay: 'soDuTuNgay' in h
-                ? chuanNgayISO(h.soDuTuNgay) : chuanNgayISO(cuH.soDuTuNgay),
         };
         // Bật lịch mà không có khách, hoặc không có MỐC NÀO (kể cả giờ riêng của
         // khách), thì lịch vô nghĩa — để nguyên "bật" chỉ làm người dùng tưởng
@@ -228,7 +204,6 @@ function tuKho(o, docDuoc) {
         khach: chuanKhach(h.khach, (typeof globalThis !== 'undefined' && globalThis.HDT_HenGio)
                                    || null),
         urlBang: String(h.urlBang || ''),
-        soDuTuNgay: chuanNgayISO(h.soDuTuNgay),
     };
     c.daHieu = !!(c.tuBam && c.daHieu);
     c.sellUrl = String(c.sellUrl || '').trim().replace(/\/+$/, '');
@@ -242,7 +217,7 @@ function tuKho(o, docDuoc) {
 /** Cài đặt "khóa hết" dùng khi đọc kho hỏng. */
 const khiDocHong = () => tuKho(null, false);
 
-const API = { chuanSoTienNgay, chuanNgayISO, MAC_DINH, DUNG_SAI_MAC_DINH, DUNG_SAI_DANG_LO,
+const API = { chuanSoTienNgay, MAC_DINH, DUNG_SAI_MAC_DINH, DUNG_SAI_DANG_LO,
               TRAN_MOI_HOA_DON_MAC_DINH,
               chuanDungSai, chuanTranMoiHoaDon, chuanKhach, gop, tuKho, khiDocHong };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

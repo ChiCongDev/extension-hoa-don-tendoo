@@ -41,6 +41,23 @@ function ngayMay(luc) {
 }
 
 /**
+ * TỜ NÀY THUỘC CỘT NÀO trên trang kế toán Sell.
+ *
+ * ⚠️ MỘT CHỖ QUYẾT ĐỊNH DUY NHẤT cho CẢ HAI đường gửi (gửi ngay sau mỗi khách,
+ * và gửi lại ở cuối loạt). Viết luật hai lần là sớm muộn hai đường lệch nhau,
+ * mà lúc ấy cùng một tờ hóa đơn nằm ở hai cột khác nhau tùy đường nào tới trước.
+ *
+ *   · 'tu_chon'  — người dùng có đặt số trong ô "tiền/ngày"
+ *   · 'he_thong' — không đặt, tức xuất theo doanh thu (nếp mặc định)
+ *
+ * Sell mặc định 'he_thong' khi thiếu khoá, nên bản extension cũ vẫn chạy đúng
+ * như trước — chỉ là mọi tờ của nó rơi vào cột "theo hệ thống".
+ */
+function kieuXuatCua(soTienDat) {
+    return Number(soTienDat) > 0 ? 'tu_chon' : 'he_thong';
+}
+
+/**
  * Đổi một bản ghi lịch sử thành gói gửi đi.
  *
  * ⚠️ Bản ghi lịch sử KHÔNG mang mã lệnh của sổ ghi dấu, nên mã chống trùng được
@@ -70,6 +87,7 @@ function goiTuBanGhi(banGhi) {
                 && Number(k.soTien || 0) > 0
                 && Number(k.tongTendoo) !== Number(k.soTien)
                 ? { so_tien_dinh: Number(k.soTien) } : {}),
+            kieu_xuat: kieuXuatCua(k.soTienDat),
             ket_qua: String(k.ket || 'LOI'),
             ly_do: String(k.chiTiet || ''),
             // ⚠️ MÃ CHỐNG TRÙNG PHẢI GIỐNG NHAU Ở CẢ HAI ĐƯỜNG GỬI (gửi ngay
@@ -158,6 +176,7 @@ function dongTuTienDo(tienDo, ngay, luc) {
         ...(ket === 'RA_HOA_DON' && Number(l.soTien || 0) > 0
             && Number(soTien) !== Number(l.soTien)
             ? { so_tien_dinh: Number(l.soTien) } : {}),
+        kieu_xuat: kieuXuatCua(l.soTienDat),
         ket_qua: ket,
         ly_do: lyDo,
         ma_lenh: l.id ? String(l.id) : `${khi}-${l.maKH}`,
@@ -317,7 +336,7 @@ async function soDangCho(kho) {
     } catch (e) { return 0; }
 }
 
-const API = { dayVeSell, guiCacDong, goiTuBanGhi, dongTuTienDo,
+const API = { dayVeSell, guiCacDong, goiTuBanGhi, dongTuTienDo, kieuXuatCua,
               themVaoCho, xepVaGui, soDangCho,
               ngayISO, ngayMay, DUONG_API, KHOA_CHO_GUI, GIOI_HAN_CHO };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

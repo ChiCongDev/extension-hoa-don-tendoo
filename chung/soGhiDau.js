@@ -97,7 +97,7 @@ function taoSo(luuTru, tuyChon = {}) {
         return so.lenh.some(l => l.trangThai === TRANG_THAI.TREO);
     }
 
-    async function taoLenh({ maKH, tenKH, soTien }) {
+    async function taoLenh({ maKH, tenKH, soTien, soTienDat }) {
         batBuocNap();
         const ma = String(maKH || '').trim();
         if (!ma) throw new Error('Thiếu mã khách hàng');
@@ -109,6 +109,12 @@ function taoSo(luuTru, tuyChon = {}) {
             maKH: ma,
             tenKH: String(tenKH || '').trim(),
             soTien: Math.round(Number(soTien)),
+            // ⚠️ SỐ NGƯỜI DÙNG TỰ ĐẶT trong ô "tiền/ngày", CHỈ ghi khi có đặt.
+            // Đây là chỗ hẹp DUY NHẤT mà mọi lệnh đi qua, nên cũng là chỗ duy
+            // nhất giữ được dấu vết "tờ này xuất theo số tự chọn". Không ghi ở
+            // đây thì cả hai đường đẩy về Sell đều mất dấu và Sell xếp nhầm cột.
+            // Không đặt thì KHÔNG thêm khoá — sổ cũ đọc lên vẫn y nguyên.
+            ...(Number(soTienDat) > 0 ? { soTienDat: Math.round(Number(soTienDat)) } : {}),
             trangThai: TRANG_THAI.CHO,
             taoLuc: dongHo(),
         };

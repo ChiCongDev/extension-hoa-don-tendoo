@@ -137,7 +137,9 @@ function soanTin(dong) {
     const cac = [
         dauDe,
         `Khách hàng: ${dong1}`,
-        `${nhanTien}: ${chuTien(d.so_tien)}đ`,
+        `${nhanTien}: ${chuTien(d.so_tien)}đ`
+            + (Number(d.so_tien_dinh) > 0
+                ? ` (định xuất ${chuTien(d.so_tien_dinh)}đ)` : ''),
     ];
     // ── NGÀY SỐ LIỆU: CHỈ HIỆN KHI NÓ KHÁC NGÀY XUẤT ───────────────────────
     //

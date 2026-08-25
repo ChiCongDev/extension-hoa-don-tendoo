@@ -34,7 +34,20 @@
 
 const GOC_API = 'https://apiv3.tendoo.vn';
 const CO_TRANG = 200;                 // đúng con số app Tendoo dùng
-const HAN_CHO_MS = 20000;             // Ranh giới 5: không lời gọi nào chờ mãi
+// Ranh giới 5: không lời gọi nào chờ mãi.
+//
+// ⚠️ 60 GIÂY, nâng từ 20 — chủ dự án chốt 25/08/2026.
+// Lượt 10:05 ngày 25/08 hỏng với «Tendoo không trả lời trong 20s» khi đọc tài
+// khoản đang đăng nhập. Ảnh chụp lúc ấy cho thấy trang POS CÒN ĐANG TẢI (màn
+// xám, vòng quay) — Tendoo chậm thật chứ máy không hỏng.
+//
+// ⚠️ ĐÁNH ĐỔI, ghi ra cho rõ: chờ lâu hơn thì ít bỏ cuộc oan hơn, NHƯNG một
+// khách gọi NHIỀU lần API, nên lượt chạy có thể dài ra đáng kể khi Tendoo ì.
+// Lịch đặt các mốc cách nhau 5 phút; lượt tràn qua mốc sau thì mốc ấy bị khóa
+// "đang chạy dở" chặn lại và khách đó hôm ấy KHÔNG có hóa đơn. Chuyện đó nay
+// có báo về Telegram (lý do DANG_CHAY) nên không mất trong im lặng — nhưng nếu
+// Tendoo hay ì thì nên giãn mốc ra 7-10 phút.
+const HAN_CHO_MS = 60000;
 
 const DUONG = {
     phien: '/user/v2/auth/info',
@@ -204,7 +217,8 @@ function taoDocKhoTrang(cuaSo) {
     };
 }
 
-const API = { taoBoNoi, taoDocKhoTrang, LoiTendoo, GOC_API, CO_TRANG, DUONG };
+const API = { taoBoNoi, taoDocKhoTrang, LoiTendoo, GOC_API, CO_TRANG, DUONG,
+              HAN_CHO_MS };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_BoNoi = API;
 })();

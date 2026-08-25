@@ -62,6 +62,14 @@ function goiTuBanGhi(banGhi) {
             // chưa ra thì gửi số tiền định xuất, để còn biết đáng ra là bao nhiêu.
             so_tien: k.ket === RA_HOA_DON && k.tongTendoo != null
                 ? Number(k.tongTendoo) : Number(k.soTien || 0),
+            // SỐ ĐỊNH XUẤT, chỉ kèm khi nó KHÁC số đã xuất thật. Ngày 24/08/2026
+            // bảng ghi 7.000đ còn Telegram ghi 50.000đ cho cùng một khách —
+            // hai con số đúng nghĩa khác nhau, nhưng không nói ra thì người đọc
+            // không biết tin cái nào, và chuyện vượt trần lọt qua mắt.
+            ...(k.ket === RA_HOA_DON && k.tongTendoo != null
+                && Number(k.soTien || 0) > 0
+                && Number(k.tongTendoo) !== Number(k.soTien)
+                ? { so_tien_dinh: Number(k.soTien) } : {}),
             ket_qua: String(k.ket || 'LOI'),
             ly_do: String(k.chiTiet || ''),
             // ⚠️ MÃ CHỐNG TRÙNG PHẢI GIỐNG NHAU Ở CẢ HAI ĐƯỜNG GỬI (gửi ngay
@@ -146,6 +154,10 @@ function dongTuTienDo(tienDo, ngay, luc) {
         ma_khach_hang: String(l.maKH),
         ten_khach_hang: String(l.tenKH || ''),
         so_tien: soTien,
+        // Xem chú thích cùng tên ở goiTuBanGhi().
+        ...(ket === 'RA_HOA_DON' && Number(l.soTien || 0) > 0
+            && Number(soTien) !== Number(l.soTien)
+            ? { so_tien_dinh: Number(l.soTien) } : {}),
         ket_qua: ket,
         ly_do: lyDo,
         ma_lenh: l.id ? String(l.id) : `${khi}-${l.maKH}`,

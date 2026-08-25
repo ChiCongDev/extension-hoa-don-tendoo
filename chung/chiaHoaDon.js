@@ -55,11 +55,19 @@ const CAC_MUC_DAN = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
  * @returns {{ma:string, tong?:number, lech?:number, ro?:Array, soRo?:number,
  *            soToHopKhacNhau?:number, tranSoLuong?:number, thongBao?:string}}
  */
-function lapKeHoach({ sanPham, soTien, tran, dungSai, uuTienKhacNhau = true }) {
+function lapKeHoach({ sanPham, soTien, tran, dungSai, uuTienKhacNhau = true,
+                      tranTuyetDoi = null }) {
     if (!Array.isArray(sanPham) || !Number.isFinite(Number(soTien)) || Number(soTien) <= 0) {
         return { ma: KET_QUA.THIEU_THAM_SO, thongBao: 'Thiếu danh sách hàng hoặc số tiền không hợp lệ' };
     }
-    const tuyChonGhep = (dungSai != null ? { dungSai: Number(dungSai) } : {});
+    // ⚠️ `tranTuyetDoi` KHÁC HẲN `tran`. `tran` là trần MỖI TỜ (chẻ nhỏ hóa
+    // đơn); `tranTuyetDoi` là mức mà TỔNG tiền ghép ra không bao giờ được vượt —
+    // dùng cho tính năng tự đặt số tiền, nơi trần chính là số dư chưa xuất hóa
+    // đơn còn lại. Lẫn hai thứ này là xuất vượt số dư. Xem ghepTien.ghepSanPham.
+    const tuyChonGhep = {
+        ...(dungSai != null ? { dungSai: Number(dungSai) } : {}),
+        ...(Number(tranTuyetDoi) > 0 ? { tranTuyetDoi: Number(tranTuyetDoi) } : {}),
+    };
     const tranRo = Number(tran) > 0 ? Math.round(Number(tran)) : 0;
 
     // ── Loại hàng ĐẮT HƠN TRẦN ──────────────────────────────────────────────

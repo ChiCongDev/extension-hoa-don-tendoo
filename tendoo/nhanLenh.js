@@ -228,6 +228,13 @@ async function xuLyMotLenh(lenh, boi) {
         soTien: mucTieu,
         tran,
         ...(caiDat.dungSai != null ? { dungSai: caiDat.dungSai } : {}),
+        // ⚠️ TRẦN TUYỆT ĐỐI của khách có đặt "tiền/ngày": chính là số dư chưa
+        // xuất hóa đơn còn lại. Không truyền = không có trần, y như từ trước.
+        //
+        // Ngày 24/08/2026 thiếu đúng dòng này: trần tính ra 7.000đ mà dung sai
+        // 200.000đ đẩy lên thành một tờ 50.000đ — vượt trần gấp bảy lần.
+        ...(Number(lenh.tranTuyetDoi) > 0
+            ? { tranTuyetDoi: Number(lenh.tranTuyetDoi) } : {}),
     });
     if (keHoach.ma !== 'OK') {
         // `chuaLamGi`: chắc chắn chưa đụng tới giỏ hàng, chưa phát hành gì. Cờ

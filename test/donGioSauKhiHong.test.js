@@ -283,7 +283,7 @@ ghiChu('— Phiên bản phải TĂNG mỗi lần sửa —');
 // khi phép kiểm chỉ đòi ">= 2.21" — tiêu đề và phép kiểm nói hai đằng, và vòng
 // gài lỗi "quên tăng phiên bản" vẫn XANH. Tiêu đề đọc thì tin được, chạy thì
 // không chứng minh gì: đúng loại bài kiểm tệ nhất.
-const BAN_TOI_THIEU = [2, 29];
+const BAN_TOI_THIEU = [2, 31];
 
 test(`⭐ manifest lên ${BAN_TOI_THIEU.join('.')}.x — để người dùng biết mình chạy bản nào`, () => {
     // ⚠️ Ngày 22/08/2026 tôi vá BA đợt mà để nguyên 2.20.0, nên nhìn số phiên

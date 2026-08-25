@@ -78,16 +78,27 @@ function apDung({ trongLich, ghep, soDu, loiSoDu } = {}) {
                     + 'Máy KHÔNG xuất khi chưa biết trần.' });
             continue;
         }
-        if (du <= 0) {
-            // KHÔNG phải lỗi: đã xuất hết phần còn nợ, hoặc đã xuất vượt từ trước.
+        // ⚠️⚠️ DƯ KHÔNG ĐỦ SỐ ĐÃ ĐẶT -> KHÔNG CHẠY. Chủ dự án chốt 24/08/2026.
+        //
+        // Bản đầu tôi chọn "xuất nốt phần còn lại". Ngày 24/08 nó ra thế này:
+        // dư của Hồng Huệ -S8 chỉ còn 7.000đ, máy hạ mục tiêu xuống 7.000đ rồi
+        // dung sai 200.000đ đẩy tổ hợp lên một món 50.000đ — XUẤT VƯỢT TRẦN GẤP
+        // BẢY LẦN. Ba khách liền như vậy.
+        //
+        // Luật mới sạch hơn nhiều: đặt bao nhiêu thì xuất đúng bấy nhiêu, không
+        // đủ thì thôi. Không còn "mục tiêu lẻ" cho dung sai bấu vào.
+        if (du < soDat) {
+            // KHÔNG phải lỗi: chỉ là chưa tới lúc. Bán thêm thì dư lớn lên.
             thieu.push({ maKH: ma, tenKH: ten,
-                lyDo: 'số dư chưa xuất hóa đơn không đủ (còn ' + tienChu(du) + 'đ)' });
+                lyDo: 'số dư chưa xuất hóa đơn còn ' + tienChu(du) + 'đ, ít hơn số đã đặt '
+                    + tienChu(soDat) + 'đ/ngày' });
             continue;
         }
-        // ⚠️ min() chứ không phải số đặt. Trần là TUYỆT ĐỐI: dư ít hơn số đặt
-        // thì xuất nốt phần còn lại, không bao giờ vượt.
-        chay.push({ maKH: ma, tenKH: ten, soTien: Math.min(soDat, du),
-                    soTienDat: soDat, soDu: du });
+        // ⚠️ VÀ MANG THEO TRẦN TUYỆT ĐỐI xuống tận bộ ghép tiền. Chỉ hạ mục tiêu
+        // thôi là chưa đủ — dung sai vẫn được phép vọt lên trên. Xem
+        // ghepTien.ghepSanPham({ tranTuyetDoi }).
+        chay.push({ maKH: ma, tenKH: ten, soTien: soDat,
+                    soTienDat: soDat, soDu: du, tranTuyetDoi: du });
     }
 
     return { chay, thieu, loi, coAiDat: true };

@@ -124,6 +124,31 @@ test('mất mạng → MAT_MANG chứ không treo', async () => {
     await assert.rejects(() => dung(m).layPhien(), (e) => e.ma === 'MAT_MANG');
 });
 
+test('⭐⭐ HẠN CHỜ MẶC ĐỊNH là 60 GIÂY — chủ dự án chốt 25/08/2026', () => {
+    // ⚠️ Lượt 10:05 ngày 25/08/2026 hỏng với «Tendoo không trả lời trong 20s»
+    // ngay ở bước đọc tài khoản đang đăng nhập. Ảnh chụp lúc ấy cho thấy trang
+    // POS CÒN ĐANG TẢI — Tendoo chậm thật, máy không hỏng.
+    //
+    // Chốt con số này lại vì nó KHÔNG có gì trên màn hình canh giữ: hạ về 20s
+    // thì mọi bài kiểm khác vẫn xanh (chúng đều tự truyền hạn riêng cho nhanh),
+    // và lỗi chỉ lộ ra ngoài đời, đúng lúc không ai ngồi xem.
+    assert.strictEqual(BoNoi.HAN_CHO_MS, 60000,
+        'hạn chờ mặc định không phải 60s: ' + BoNoi.HAN_CHO_MS);
+});
+
+test('⭐ câu báo lỗi phải ĐỌC TỪ hằng số, không chép tay con số vào chữ', () => {
+    // Chép tay thì đổi hằng số xong câu chữ nói dối: hạn 60s mà vẫn ghi "20s",
+    // và người đọc log đi tìm nhầm bệnh.
+    const m = taoMang((url, tuyChon) => new Promise((_, tuChoi) => {
+        tuyChon.signal.addEventListener('abort', () => {
+            const e = new Error('aborted'); e.name = 'AbortError'; tuChoi(e);
+        });
+    }));
+    return assert.rejects(
+        () => dung(m, { hanChoMs: 7000 }).layPhien(),
+        (e) => e.ma === 'QUA_HAN_CHO' && /trong 7s/.test(e.message));
+});
+
 test('RANH GIỚI 5: có hạn chờ, Tendoo im lặng thì bỏ chứ không đợi mãi', async () => {
     const m = taoMang((url, tuyChon) => new Promise((_, tuChoi) => {
         tuyChon.signal.addEventListener('abort', () => {

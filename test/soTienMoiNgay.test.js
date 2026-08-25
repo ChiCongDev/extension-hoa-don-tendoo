@@ -73,13 +73,47 @@ test('⭐⭐⭐ dư THỪA → xuất đúng số đã đặt', () => {
         'không xuất đúng số đã đặt — doanh số hôm nay KHÔNG được xen vào');
 });
 
-test('⭐⭐⭐ dư ÍT HƠN số đặt → xuất NỐT phần còn lại, không vượt', () => {
+test('⭐⭐⭐ dư ÍT HƠN số đặt → KHÔNG CHẠY (chủ dự án chốt 24/08/2026)', () => {
+    // ⚠️ QUYẾT ĐỊNH BỊ ĐẢO NGƯỢC, cố ý.
+    //
+    // Bản đầu tôi chọn "xuất nốt phần còn lại". Ngày 24/08/2026 nó ra thế này:
+    // dư của Hồng Huệ -S8 còn 7.000đ, máy hạ mục tiêu xuống 7.000đ, rồi DUNG
+    // SAI 200.000đ đẩy tổ hợp lên một món 50.000đ — xuất vượt trần GẤP BẢY LẦN.
+    // Ba khách liền như vậy.
+    //
+    // Luật mới sạch hơn: đặt bao nhiêu thì xuất đúng bấy nhiêu, không đủ thì
+    // thôi. Không còn "mục tiêu lẻ" cho dung sai bấu vào.
     const trongLich = [khach('A', { soTienNgay: 10000000 })];
     const ghep = HenGio.ghepVoiBang(trongLich, bang([['A', 990000]]), true);
     const r = ApDung.apDung({ trongLich, ghep, soDu: new Map([['A', 4000000]]) });
-    assert.strictEqual(r.chay[0].soTien, 4000000,
-        '⛔⛔ VƯỢT TRẦN — xuất quá phần doanh số còn nợ hóa đơn');
+    assert.strictEqual(r.chay.length, 0, '⛔ vẫn chạy dù dư 4tr < số đặt 10tr');
+    assert.strictEqual(r.loi.length, 0, 'dư chưa đủ mà kêu thành LỖI');
+    assert.strictEqual(r.thieu.length, 1);
+    assert.match(r.thieu[0].lyDo, /ít hơn số đã đặt/, r.thieu[0].lyDo);
 });
+
+test('⭐⭐ dư ĐÚNG BẰNG số đặt → vẫn chạy', () => {
+    // Ranh giới. "<" chứ không phải "<=", nếu không thì đặt đúng bằng dư là
+    // không bao giờ xuất được đồng nào.
+    const trongLich = [khach('A', { soTienNgay: 4000000 })];
+    const ghep = HenGio.ghepVoiBang(trongLich, bang([['A', 990000]]), true);
+    const r = ApDung.apDung({ trongLich, ghep, soDu: new Map([['A', 4000000]]) });
+    assert.strictEqual(r.chay.length, 1, '⛔ dư đúng bằng số đặt mà không chạy');
+    assert.strictEqual(r.chay[0].soTien, 4000000);
+});
+
+test('⭐⭐⭐ mỗi lệnh phải MANG THEO trần tuyệt đối = số dư', () => {
+    // ⚠️ Hạ mục tiêu thôi là CHƯA ĐỦ — chính ca 24/08 đã chứng minh. Dung sai
+    // vẫn được phép vọt lên trên mục tiêu. Trần phải đi cùng lệnh xuống tận bộ
+    // ghép tiền thì mới thành trần thật.
+    const trongLich = [khach('A', { soTienNgay: 5000000 })];
+    const ghep = HenGio.ghepVoiBang(trongLich, bang([['A', 990000]]), true);
+    const r = ApDung.apDung({ trongLich, ghep, soDu: new Map([['A', 5100000]]) });
+    assert.strictEqual(r.chay[0].soTien, 5000000);
+    assert.strictEqual(r.chay[0].tranTuyetDoi, 5100000,
+        '⛔ lệnh KHÔNG mang trần — dung sai sẽ đẩy vượt số dư');
+});
+
 
 test('⭐⭐⭐ dư ÂM hoặc BẰNG 0 → BỎ QUA, và KHÔNG tính là lỗi', () => {
     // Trên máy chủ dự án, cả bốn khách đang âm (−96tr, −84tr, −122tr, −74tr) vì
@@ -91,7 +125,7 @@ test('⭐⭐⭐ dư ÂM hoặc BẰNG 0 → BỎ QUA, và KHÔNG tính là lỗi
         assert.strictEqual(r.chay.length, 0, '⛔⛔ VẪN XUẤT trong khi dư ' + du);
         assert.strictEqual(r.loi.length, 0, 'dư cạn mà kêu thành LỖI: ' + du);
         assert.strictEqual(r.thieu.length, 1);
-        assert.match(r.thieu[0].lyDo, /số dư .*không đủ/, r.thieu[0].lyDo);
+        assert.match(r.thieu[0].lyDo, /ít hơn số đã đặt/, r.thieu[0].lyDo);
     }
 });
 
@@ -104,6 +138,85 @@ test('⭐⭐ khách KHÔNG có doanh thu hôm nay VẪN chạy nếu có đặt 
     const r = ApDung.apDung({ trongLich, ghep, soDu: new Map([['A', 20000000]]) });
     assert.strictEqual(r.chay.length, 1, '⛔ vẫn bỏ qua khách đã đặt số');
     assert.strictEqual(r.chay[0].soTien, 7000000);
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+ghiChu('— ⭐⭐⭐ TRẦN TUYỆT ĐỐI: dung sai KHÔNG được vượt qua —');
+
+const GhepTien = require('../chung/ghepTien');
+const ChiaHoaDon = require('../chung/chiaHoaDon');
+
+test('⭐⭐⭐ tái hiện ca 16:30 ngày 24/08: trần 7.000 mà xuất 50.000', () => {
+    // ⚠️ ĐÂY LÀ CON BUG THẬT, dựng lại nguyên si.
+    // Số dư của Hồng Huệ -S8 còn 7.000đ. Dung sai đang đặt 200.000đ. Dòng
+    // `tran = soTien + dungSaiThuc` trong ghepTien cho phép vọt lên 207.000đ,
+    // và máy chọn một món 50.000đ — hóa đơn thuế gấp BẢY LẦN trần.
+    const hang = [{ ma: 'SP1', ten: 'Món 50k', gia: 50000, ton: 99 }];
+
+    const khongTran = GhepTien.ghepSanPham({ sanPham: hang, soTien: 7000, dungSai: 200000 });
+    assert.strictEqual(khongTran.tong, 50000,
+        'trang giả không còn dựng lại được con bug — bài này mất ý nghĩa');
+
+    const coTran = GhepTien.ghepSanPham({
+        sanPham: hang, soTien: 7000, dungSai: 200000, tranTuyetDoi: 7000,
+    });
+    assert.notStrictEqual(coTran.ma, 'OK', '⛔⛔ VẪN GHÉP RA TỔ HỢP VƯỢT TRẦN');
+    assert.ok(coTran.tong == null || coTran.tong <= 7000,
+        '⛔⛔ vượt trần: ' + coTran.tong);
+});
+
+test('⭐⭐⭐ trần chặn phía TRÊN nhưng KHÔNG chặn phía dưới', () => {
+    // Xuất thiếu một ít thì phần còn lại vẫn nằm nguyên trong số dư, không mất
+    // đi đâu. Chặn cả hai chiều là làm tính năng gần như không bao giờ ghép nổi.
+    const hang = [{ ma: 'A', ten: 'A', gia: 990000, ton: 99 },
+                  { ma: 'B', ten: 'B', gia: 50000, ton: 99 }];
+    const k = GhepTien.ghepSanPham({
+        sanPham: hang, soTien: 5000000, dungSai: 200000, tranTuyetDoi: 5100000,
+    });
+    assert.strictEqual(k.ma, 'OK', k.thongBao);
+    assert.ok(k.tong <= 5100000, '⛔ vượt trần: ' + k.tong);
+});
+
+test('⛔ KHÔNG truyền trần → chạy y hệt từ trước tới nay', () => {
+    // Lời hứa với đường cũ: khách không đặt "tiền/ngày" thì không một li nào đổi.
+    const hang = [{ ma: 'SP1', ten: 'Món 50k', gia: 50000, ton: 99 }];
+    for (const tran of [undefined, null, 0]) {
+        const k = GhepTien.ghepSanPham({
+            sanPham: hang, soTien: 7000, dungSai: 200000, tranTuyetDoi: tran,
+        });
+        assert.strictEqual(k.tong, 50000, 'đường cũ bị đổi với tranTuyetDoi=' + tran);
+    }
+});
+
+test('⛔ trần thấp hơn mọi mức giá → nói ĐÚNG BỆNH, không báo "lệch dung sai"', () => {
+    const k = GhepTien.ghepSanPham({
+        sanPham: [{ ma: 'A', ten: 'A', gia: 990000, ton: 9 }],
+        soTien: 7000, dungSai: 200000, tranTuyetDoi: 7000,
+    });
+    assert.match(k.thongBao, /Trần cho phép/, k.thongBao);
+});
+
+test('⭐⭐ trần đi xuyên được qua bộ chia hóa đơn', () => {
+    // Hàm ghép có trần mà bộ chia không chuyển tiếp thì trần chết ở giữa đường.
+    const hang = [{ ma: 'SP1', ten: 'Món 50k', gia: 50000, ton: 99 }];
+    const k = ChiaHoaDon.lapKeHoach({
+        sanPham: hang, soTien: 7000, tran: 0, dungSai: 200000, tranTuyetDoi: 7000,
+    });
+    assert.notStrictEqual(k.ma, 'OK', '⛔ bộ chia NUỐT MẤT trần — vẫn lập được kế hoạch vượt');
+});
+
+test('⛔ bộ chia KHÔNG truyền trần → vẫn như cũ', () => {
+    const hang = [{ ma: 'SP1', ten: 'Món 50k', gia: 50000, ton: 99 }];
+    const k = ChiaHoaDon.lapKeHoach({ sanPham: hang, soTien: 7000, tran: 0, dungSai: 200000 });
+    assert.strictEqual(k.ma, 'OK', 'đường cũ bị đổi: ' + k.thongBao);
+});
+
+test('⭐⭐⭐ và nhanLenh phải CHUYỂN TIẾP trần từ lệnh xuống bộ chia', () => {
+    // Lại đúng bẫy "hàm đúng mà dây không nối". Trần nằm trong lệnh mà nhanLenh
+    // không đưa xuống thì cả chuỗi trên vô dụng.
+    const ma = fs.readFileSync(path.join(__dirname, '..', 'tendoo', 'nhanLenh.js'), 'utf8');
+    assert.match(ma, /tranTuyetDoi: Number\(lenh\.tranTuyetDoi\)/,
+        '⛔ nhanLenh KHÔNG chuyển trần xuống bộ chia hóa đơn');
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -347,6 +460,51 @@ test('⛔⛔ docSoDu KHÔNG BAO GIỜ được ném', async () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+ghiChu('— ⭐⭐ M4: NÓI RÕ CẢ HAI CON SỐ khi chúng lệch nhau —');
+
+const DayVeSell = require('../chung/dayVeSell');
+const BaoTelegram = require('../chung/baoTelegram');
+
+test('⭐⭐⭐ đã xuất KHÁC số định xuất → dòng gửi đi phải kèm CẢ HAI', () => {
+    // ⚠️ Ngày 24/08/2026 bảng lịch sử ghi 7.000đ còn Telegram ghi 50.000đ cho
+    // CÙNG một khách. Hai con số đúng nghĩa khác nhau — một là số định xuất,
+    // một là số đã xuất thật — nhưng không nói ra thì người đọc không biết tin
+    // cái nào, và chuyện VƯỢT TRẦN lọt qua mắt suốt một buổi.
+    const d = DayVeSell.dongTuTienDo({
+        loai: 'xong',
+        lenh: { id: 'l1', maKH: 'S8', tenKH: 'Hồng Huệ -S8', soTien: 7000 },
+        ketQua: { daBamThanhToan: true, tong: 50000 },
+    }, '2026-08-24', Date.now());
+    assert.strictEqual(d.so_tien, 50000, 'số đã xuất phải là số THẬT');
+    assert.strictEqual(d.so_tien_dinh, 7000, '⛔ giấu mất số định xuất');
+});
+
+test('⛔ hai số BẰNG NHAU thì đừng nhắc — đó là mọi lượt bình thường', () => {
+    const d = DayVeSell.dongTuTienDo({
+        loai: 'xong',
+        lenh: { id: 'l1', maKH: 'S8', tenKH: 'Hồng Huệ -S8', soTien: 50000 },
+        ketQua: { daBamThanhToan: true, tong: 50000 },
+    }, '2026-08-24', Date.now());
+    assert.strictEqual(d.so_tien_dinh, undefined, 'nhắc thừa ở lượt bình thường');
+});
+
+test('⭐⭐ và Telegram phải HIỆN RA cả hai', () => {
+    const chu = BaoTelegram.soanTin({
+        ten_khach_hang: 'Hồng Huệ -S8', ma_khach_hang: 'S8', ma_lenh: 'l1',
+        so_tien: 50000, so_tien_dinh: 7000, ket_qua: 'RA_HOA_DON', chay_luc: Date.now(),
+    });
+    assert.match(chu, /Số tiền: 50\.000đ \(định xuất 7\.000đ\)/, chu);
+});
+
+test('⛔ không có số định xuất thì tin nhắn phải sạch như cũ', () => {
+    const chu = BaoTelegram.soanTin({
+        ten_khach_hang: 'Hồng Huệ -S8', ma_khach_hang: 'S8', ma_lenh: 'l1',
+        so_tien: 50000, ket_qua: 'RA_HOA_DON', chay_luc: Date.now(),
+    });
+    assert.ok(!/định xuất/.test(chu), 'thêm chữ thừa vào lượt bình thường: ' + chu);
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 ghiChu('— ⭐⭐ NỐI DÂY: mã có thật sự dùng những thứ trên không —');
 
 const maNen = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
@@ -371,6 +529,20 @@ test('⛔⛔ KHÔNG ai đặt số thì KHÔNG được gọi Sell', () => {
     const j = maThat.indexOf('HDT_SoDuKeToan.docSoDu(');
     assert.ok(i > 0 && j > i && j - i < 400,
         '⛔ lời gọi đọc số dư nằm NGOÀI cửa "có ai đặt số" — khách để trống cũng bị kéo theo');
+});
+
+test('⭐⭐ tin "cả lượt không chạy" phải nói LÝ DO THẬT của từng khách', () => {
+    // ⚠️ Lượt 16:45 ngày 24/08/2026 nhắn "Hôm nay không khách nào trong lịch
+    // phát sinh doanh thu" — nhưng Ngọc Lan S5 có đặt tiền/ngày, nên lý do thật
+    // gần như chắc chắn là "số dư chưa xuất hóa đơn không đủ".
+    //
+    // Câu ấy ĐÓNG ĐINH SẴN trong mã, nên nó nói sai mà không ai biết. Đúng loại
+    // lỗi đã mất mấy ngày để moi ra ở chỗ khác: máy nói chắc nịch một câu sai.
+    assert.match(maThat, /const keLyDo = \(thieu \|\| \[\]\)/,
+        '⛔ không gom lý do của từng khách bị bỏ qua');
+    assert.ok(maThat.includes(
+        "+ (keLyDo.length ? 'Lý do từng khách — ' + keLyDo.join('; ') + '. '"),
+        '⛔ tin vẫn đóng đinh một câu thay vì dùng lý do thật');
 });
 
 test('⭐⭐ lỗi khâu số dư phải đi tiếp vào lịch sử và Telegram', () => {

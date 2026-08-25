@@ -592,10 +592,22 @@ async function chayTheoHen(moc) {
         dongTabNeuTuMo(tab);
         // Đây là NGÀY YÊN Ả, không phải lỗi: khách không mua thì không có gì để
         // xuất. Không mở tab Tendoo, không đăng nhập ai, không gạch tên ai.
+        // ⚠️ NÓI ĐÚNG LÝ DO THẬT, đừng đóng đinh một câu.
+        //
+        // Lượt 16:45 ngày 24/08/2026 nhắn "không khách nào phát sinh doanh thu"
+        // trong khi lý do thật là "số dư chưa xuất hóa đơn không đủ". Câu ấy
+        // đóng đinh sẵn ở đây nên nó nói sai mà không ai biết — đúng loại lỗi
+        // đã mất mấy ngày để moi ra ở chỗ khác.
+        const keLyDo = (thieu || [])
+            .filter(x => x && x.lyDo)
+            .map(x => `${x.tenKH || x.maKH}: ${x.lyDo}`)
+            .slice(0, 6);
         await ghiKetQuaVaLichSu({
             moc, chay: false, lyDo: 'KHONG_KHACH_NAO_PHAT_SINH', thieu, ngay: bang.ngay,
-            thongBao: `Hôm nay (${bang.ngay.tu}) không khách nào trong lịch phát sinh doanh `
-                + 'thu để tạo hóa đơn. Lịch giữ nguyên, mai chạy tiếp.',
+            thongBao: `Hôm nay (${bang.ngay.tu}) không khách nào trong lịch chạy được. `
+                + (keLyDo.length ? 'Lý do từng khách — ' + keLyDo.join('; ') + '. '
+                                 : 'Không khách nào phát sinh doanh thu. ')
+                + 'Lịch giữ nguyên, mai chạy tiếp.',
         }, trongLich);
         return;
     }

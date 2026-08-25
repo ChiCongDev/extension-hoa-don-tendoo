@@ -59,8 +59,28 @@ function ucln(a, b) {
  * @param {number} [thamSo.tranBoNho=5000000]  Chặn an toàn cho bảng quy hoạch động.
  * @returns {{ma:string, tong?:number, lech?:number, chon?:Array, thongBao:string}}
  */
+/**
+ * TRẦN TUYỆT ĐỐI — mức KHÔNG BAO GIỜ được vượt, dù dung sai cho phép.
+ *
+ * ⚠️⚠️ CA HỎNG THẬT 16:30 ngày 24/08/2026, ba khách liền.
+ * Tính năng "tự đặt số tiền mỗi ngày" tính ra trần 7.000đ (đúng bằng số dư
+ * chưa xuất hóa đơn còn lại của khách). Nhưng dòng `tran = soTien + dungSaiThuc`
+ * ngay dưới đây cho phép vọt lên 207.000đ, và máy chọn một món 50.000đ —
+ * XUẤT HÓA ĐƠN THUẾ GẤP BẢY LẦN TRẦN.
+ *
+ * Dung sai vốn sinh ra cho việc khác: khớp doanh số hôm nay thì lệch vài chục
+ * nghìn không sao. Nhưng khi con số là một TRẦN CỨNG thì lệch lên là sai bản
+ * chất, không phải sai số.
+ *
+ * ⚠️ CHỈ CHẶN PHÍA TRÊN. Phía dưới vẫn được lệch tới dung sai như cũ — xuất
+ * thiếu một ít thì phần còn lại vẫn nằm nguyên trong số dư, không mất đi đâu.
+ *
+ * ⚠️ KHÔNG TRUYỀN = KHÔNG CÓ TRẦN, chạy y hệt từ trước tới nay. Đường cũ (xuất
+ * theo doanh số hôm nay) không đổi một li.
+ */
 function ghepSanPham({ sanPham, soTien, dungSai = DUNG_SAI_MAC_DINH,
-                      tyLeToiDa = TY_LE_TOI_DA_MAC_DINH, tranBoNho = 5000000 }) {
+                      tyLeToiDa = TY_LE_TOI_DA_MAC_DINH, tranBoNho = 5000000,
+                      tranTuyetDoi = null }) {
     if (!Number.isFinite(soTien) || soTien <= 0) {
         return { ma: KET_QUA.KHONG_CO_HANG, thongBao: 'Số tiền không hợp lệ' };
     }
@@ -96,8 +116,26 @@ function ghepSanPham({ sanPham, soTien, dungSai = DUNG_SAI_MAC_DINH,
 
     // Quy về đơn vị ƯCLN của các mức giá.
     const g = hang.reduce((u, sp) => ucln(u, sp.gia), 0);
-    const tran = soTien + dungSaiThuc;          // không bao giờ vượt quá mức này
+    // ⚠️ TRẦN TUYỆT ĐỐI cắt ngay tại đây, TRƯỚC khi dựng bảng. Cắt ở khâu chọn
+    // đáp án thôi thì bảng vẫn chứa những mức vượt trần, và mọi nhánh đọc bảng
+    // về sau (kể cả nhánh "mức gần nhất") lại có cơ hội lôi chúng ra.
+    const coTran = Number.isFinite(Number(tranTuyetDoi)) && Number(tranTuyetDoi) > 0;
+    const tran = coTran
+        ? Math.min(soTien + dungSaiThuc, Number(tranTuyetDoi))
+        : soTien + dungSaiThuc;             // không bao giờ vượt quá mức này
     const cap = Math.floor(tran / g);       // số ô của bảng quy hoạch động
+
+    // Trần thấp hơn cả món rẻ nhất -> không tổ hợp nào lọt. Nói thẳng ra đây,
+    // chứ để nó rơi xuống nhánh "lệch quá dung sai" là báo sai bệnh.
+    if (cap < 1) {
+        return {
+            ma: KET_QUA.LECH_QUA_DUNG_SAI,
+            thongBao: 'Trần cho phép (' + Number(tran).toLocaleString('vi-VN')
+                + 'đ) thấp hơn mọi mức giá — không ghép nổi tổ hợp nào.',
+            dungSaiThuc, tranTuyetDoi: coTran ? Number(tranTuyetDoi) : null,
+            tongGanNhat: null, lechGanNhat: null,
+        };
+    }
 
     if (cap > tranBoNho) {
         return { ma: KET_QUA.QUA_LON, thongBao: 'Số tiền quá lớn so với mức giá, không tính được' };

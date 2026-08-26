@@ -615,7 +615,7 @@ test('⛔ thông báo lỗi KHÔNG được chứa token', async () => {
 
 ghiChu('— Dò chat id —');
 
-test('⭐ lấy đoạn chat RIÊNG gần nhất', async () => {
+test('⭐ chatId vẫn là nơi gần nhất (chỗ gọi cũ không phải sửa)', async () => {
     const f = taoFetch({ ok: true, than: { ok: true, result: [
         { message: { chat: { id: 111, type: 'private', first_name: 'Cũ' } } },
         { message: { chat: { id: 222, type: 'private', username: 'chung' } } },
@@ -626,20 +626,44 @@ test('⭐ lấy đoạn chat RIÊNG gần nhất', async () => {
     assert.match(f.cac[0].url, /\/getUpdates$/, f.cac[0].url);
 });
 
-test('⛔ BỎ QUA nhóm — chủ dự án chốt chat RIÊNG', async () => {
+// ⚠️ ĐẢO LẠI LUẬT CŨ (26/08/2026). Chỗ này trước đây khoá "BỎ QUA nhóm — chủ
+// dự án chốt chat RIÊNG". Chủ dự án đổi ý khi muốn báo về cả nhóm: thêm bot vào
+// nhóm mà nút dò vẫn lọc bỏ nhóm thì không đường nào lấy được id nhóm.
+test('⭐ THẤY CẢ NHÓM, không lọc bỏ nữa', async () => {
     const f = taoFetch({ ok: true, than: { ok: true, result: [
-        { message: { chat: { id: 111, type: 'private' } } },
-        { message: { chat: { id: -999, type: 'group', title: 'Nhóm' } } },
+        { message: { chat: { id: 111, type: 'private', first_name: 'Chung' } } },
+        { message: { chat: { id: -999, type: 'group', title: 'Nhóm hóa đơn' } } },
     ] } });
     const kq = await Tg.doChatId(CAI_DAT, f);
-    assert.strictEqual(kq.chatId, '111', 'đã lấy nhầm id nhóm');
+    assert.strictEqual(kq.ok, true);
+    assert.deepStrictEqual(kq.cacChat.map(x => x.id), ['111', '-999'],
+        'nhóm vẫn bị lọc bỏ — thêm bot vào nhóm xong không lấy được id');
+    const nhom = kq.cacChat.find(x => x.id === '-999');
+    assert.strictEqual(nhom.nhom, true, 'không đánh dấu đây là nhóm');
+    assert.strictEqual(nhom.ten, 'Nhóm hóa đơn',
+        'mất tên nhóm — người dùng không biết chọn cái nào');
+});
+
+test('bỏ trùng theo id, giữ lần nhắc CUỐI (tên nhóm có thể vừa đổi)', async () => {
+    const f = taoFetch({ ok: true, than: { ok: true, result: [
+        { message: { chat: { id: -999, type: 'group', title: 'Tên cũ' } } },
+        { message: { chat: { id: -999, type: 'group', title: 'Tên mới' } } },
+    ] } });
+    const kq = await Tg.doChatId(CAI_DAT, f);
+    assert.strictEqual(kq.cacChat.length, 1, 'một nhóm hiện ra hai lần');
+    assert.strictEqual(kq.cacChat[0].ten, 'Tên mới');
 });
 
 test('chưa nhắn cho bot → nói rõ phải làm gì', async () => {
     const kq = await Tg.doChatId(CAI_DAT, taoFetch({ ok: true, than: { ok: true, result: [] } }));
     assert.strictEqual(kq.ok, false);
     assert.strictEqual(kq.ma, 'CHUA_CO_TIN');
-    assert.match(kq.thongBao, /NHẮN CHO BOT/, kq.thongBao);
+    // Phải chỉ đường cho CẢ HAI: chat riêng và nhóm. Nhóm có luật khác hẳn —
+    // bot không đọc được tin thường, nên không nói ra là người dùng nhắn mãi
+    // vào nhóm mà nút này cứ im.
+    assert.match(kq.thongBao, /nhắn cho bot/i, kq.thongBao);
+    assert.match(kq.thongBao, /[/]start@/,
+        'không chỉ đường lấy id NHÓM: ' + kq.thongBao);
 });
 
 test('chưa có token thì không gọi mạng', async () => {

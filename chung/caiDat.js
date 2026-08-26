@@ -131,6 +131,36 @@ function chuanKhach(ds, HenGio) {
 }
 
 /**
+ * CHUẨN HOÁ DANH SÁCH CHAT ID của Telegram.
+ *
+ * Chủ dự án chốt 26/08/2026: báo về CẢ NHÓM LẪN CHAT RIÊNG. Nên ô "Chat id"
+ * nhận NHIỀU nơi, cách nhau dấu phẩy (xuống dòng hay khoảng trắng cũng được —
+ * người ta dán từ chỗ khác vào là hay dính mấy thứ đó).
+ *
+ * ⚠️ MỘT ID VẪN RA ĐÚNG MỘT ID, không thêm dấu phẩy, không đổi gì. Cài đặt
+ * đang chạy của người dùng phải qua đây mà không suy suyển.
+ *
+ * Chỉ nhận hai dạng Telegram thật sự hiểu:
+ *   · số  — chat riêng dương, nhóm âm (-100…)
+ *   · @ten — kênh/nhóm công khai
+ * Rác thì BỎ HẲN. Giữ lại một id sai là mỗi lượt chạy lại tốn một lần gọi hỏng
+ * và một dòng báo lỗi, mà không nơi nào nhận thêm được gì.
+ */
+function chuanChatId(v) {
+    const thay = new Set();
+    const ra = [];
+    for (const phan of String(v == null ? '' : v).split(/[,;\s]+/)) {
+        const t = phan.trim();
+        if (!t) continue;
+        if (!/^-?\d+$/.test(t) && !/^@[A-Za-z0-9_]{3,}$/.test(t)) continue;
+        if (thay.has(t)) continue;
+        thay.add(t);
+        ra.push(t);
+    }
+    return ra.join(', ');
+}
+
+/**
  * GỘP cài đặt mới vào cài đặt cũ.
  *
  * Chỉ đụng tới trường nào CÓ MẶT trong `tin`. Đây là điểm mấu chốt: popup và
@@ -162,7 +192,7 @@ function gop(cu, tin, HenGio) {
         c.telegramToken = String(t.telegramToken).trim();
     }
     if ('telegramChatId' in t && String(t.telegramChatId || '').trim()) {
-        c.telegramChatId = String(t.telegramChatId).trim();
+        c.telegramChatId = chuanChatId(t.telegramChatId);
     }
     // Muốn TẮT thì phải nói thẳng, không nhập nhằng với ô để trống.
     if (t.xoaTelegram === true) { c.telegramToken = ''; c.telegramChatId = ''; }
@@ -209,7 +239,7 @@ function tuKho(o, docDuoc) {
     c.sellUrl = String(c.sellUrl || '').trim().replace(/\/+$/, '');
     c.sellToken = String(c.sellToken || '').trim();
     c.telegramToken = String(c.telegramToken || '').trim();
-    c.telegramChatId = String(c.telegramChatId || '').trim();
+    c.telegramChatId = chuanChatId(c.telegramChatId);
     c.docDuoc = docDuoc !== false;
     return c;
 }
@@ -219,7 +249,8 @@ const khiDocHong = () => tuKho(null, false);
 
 const API = { chuanSoTienNgay, MAC_DINH, DUNG_SAI_MAC_DINH, DUNG_SAI_DANG_LO,
               TRAN_MOI_HOA_DON_MAC_DINH,
-              chuanDungSai, chuanTranMoiHoaDon, chuanKhach, gop, tuKho, khiDocHong };
+              chuanDungSai, chuanTranMoiHoaDon, chuanKhach, chuanChatId,
+              gop, tuKho, khiDocHong };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_CaiDat = API;
 

@@ -247,8 +247,14 @@ async function baoLuot({ banGhi, caiDat, kho, layFetch, luc }) {
         if (!(await gianhCho(kho, ma, nay))) { kq.boQua++; return kq; }
 
         const gui = await guiTin(c, soanTinLuot(b, nay), layFetch);
-        if (gui.ok) kq.daGui++;
-        else { await traCho(kho, ma); kq.hong++; kq.ma = gui.ma; kq.thongBao = gui.thongBao; }
+        if (gui.ok) {
+            kq.daGui++;
+            // Xem chú thích cùng tên ở baoCacDong().
+            if (Number(gui.soHong) > 0) {
+                kq.hongMotPhan = Number(gui.soHong);
+                kq.thongBao = gui.thongBao;
+            }
+        } else { await traCho(kho, ma); kq.hong++; kq.ma = gui.ma; kq.thongBao = gui.thongBao; }
     } catch (e) {
         kq.hong++; kq.ma = 'NGOAI_LE'; kq.thongBao = chuoi((e && e.message) || e);
     }
@@ -296,21 +302,58 @@ async function traCho(kho, ma) {
 const goc = (token) => 'https://api.telegram.org/bot' + encodeURIComponent(token);
 
 /**
- * Gửi MỘT tin. Không ném lỗi bao giờ.
+ * Tách ô "Chat id" thành DANH SÁCH NƠI NHẬN.
  *
- * @returns {Promise<{ok:boolean, ma?:string, thongBao?:string}>}
+ * Chủ dự án chốt 26/08/2026: báo về cả nhóm lẫn chat riêng. `caiDat.js` đã
+ * chuẩn hoá thành "a, b, c" rồi, nhưng hàm này vẫn tự tách lại — nó còn được
+ * gọi với cài đặt dựng tay trong test và với cài đặt cũ đọc thẳng từ kho.
  */
-async function guiTin(caiDat, chu, layFetch) {
-    const c = caiDat || {};
-    const token = chuoi(c.telegramToken);
-    const chat = chuoi(c.telegramChatId);
-    // Chưa khai thì THÔI, không phải lỗi: người dùng có thể cố ý không dùng.
-    if (!token || !chat) return { ok: false, ma: 'CHUA_KHAI_BAO' };
-    if (!chuoi(chu)) return { ok: false, ma: 'KHONG_CO_NOI_DUNG' };
+function tachChatId(v) {
+    return String(v == null ? '' : v)
+        .split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+}
 
-    const fetchDung = layFetch || (typeof fetch !== 'undefined' ? fetch : null);
-    if (!fetchDung) return { ok: false, ma: 'KHONG_CO_FETCH' };
+/** Đợi bấy nhiêu mili-giây. Tách ra để test bơm đồng hồ giả vào được. */
+const nghi = (ms) => new Promise(r => setTimeout(r, ms));
 
+/** Đợi tối đa bấy nhiêu giây khi Telegram chặn tốc độ, và thử lại mấy lần. */
+const CHO_TOI_DA_GIAY = 30;
+const SO_LAN_THU_LAI = 2;
+
+/**
+ * Gửi tin tới ĐÚNG MỘT nơi. Không ném lỗi bao giờ.
+ *
+ * ⚠️ THỬ LẠI KHI BỊ CHẶN TỐC ĐỘ (429), và CHỈ khi đó. Mọi lỗi khác đều là lỗi
+ * đứng yên — sai token, sai chat id, bot bị chặn — thử lại chỉ tốn thêm thời
+ * gian mà kết quả vẫn thế.
+ *
+ * Vì sao phải thử lại ở ĐÂY chứ không để lượt gửi lại cuối loạt lo: từ
+ * 26/08/2026 một tin đi tới nhiều nơi, và luật "gửi được một nơi là coi như
+ * xong" giữ dấu "đã báo". Nơi dính 429 sẽ KHÔNG bao giờ được gọi lại — một cái
+ * ngừng vài giây hoá thành mất tin vĩnh viễn.
+ *
+ * Đợi có TRẦN: Telegram thỉnh thoảng bảo đợi hàng trăm giây, mà đây là việc phụ
+ * chạy cạnh luồng phát hành hóa đơn — treo ở đấy còn tệ hơn mất một tin.
+ *
+ * ⚠️ HỆ QUẢ PHẢI BIẾT: móc "gửi ngay sau mỗi khách" KHÔNG await nên việc phát
+ * hành hóa đơn không bị chậm đi một giây nào. Nhưng LƯỚI AN TOÀN CUỐI LOẠT thì
+ * CÓ await (xem background.js) — lúc ấy hóa đơn đã ra hết rồi, chỉ còn tiến
+ * trình nền sống thêm. Đổi lại, Chrome có thể giết tiến trình nền ĐÚNG LÚC đang
+ * đợi, và tin đó mất luôn vì dấu "đã báo" vẫn nằm đó. Đây CHÍNH LÀ chỗ hở đã
+ * ghi ở đầu tệp, nay rộng thêm đúng bằng thời gian đợi — nên trần phải nhỏ.
+ */
+async function guiMotNoi(token, chat, chu, fetchDung, doiHo) {
+    const doi = doiHo || nghi;
+    for (let lan = 0; ; lan++) {
+        const r = await guiMotLan(token, chat, chu, fetchDung);
+        if (r.ok || r.ma !== 'BI_CHAN_TOC_DO' || lan >= SO_LAN_THU_LAI) return r;
+        const giay = Math.min(Number(r.choGiay) || 1, CHO_TOI_DA_GIAY);
+        await doi(giay * 1000);
+    }
+}
+
+/** Đúng MỘT cú gọi, không thử lại. */
+async function guiMotLan(token, chat, chu, fetchDung) {
     try {
         const tra = await fetchDung(goc(token) + '/sendMessage', {
             method: 'POST',
@@ -326,6 +369,54 @@ async function guiTin(caiDat, chu, layFetch) {
                  thongBao: 'Không gọi được Telegram (mất mạng?): '
                            + chuoi((e && e.message) || e) };
     }
+}
+
+/**
+ * Gửi MỘT tin tới MỌI nơi đã khai. Không ném lỗi bao giờ.
+ *
+ * ⚠️ GỬI ĐƯỢC MỘT NƠI LÀ `ok`. Nghe rộng rãi quá, nhưng đây là lựa chọn có ý:
+ * bên trên, `baoCacDong` chỉ GỠ DẤU "đã báo" khi `ok` sai. Nếu partial mà trả
+ * `ok: false` thì dấu bị gỡ, lượt gửi lại ở cuối loạt chạy lần nữa, và nơi
+ * ĐÃ NHẬN ĐƯỢC sẽ nhận tin thứ hai — đúng cái "báo trùng" mà cả tệp này dựng
+ * lên để tránh (xem chú thích đầu tệp: "Chọn mất tin hơn là báo trùng").
+ *
+ * Đổi lại, nơi nào hỏng KHÔNG được im lặng: `chiTiet` kể ra từng nơi, và
+ * `thongBao` nói thẳng nơi nào hỏng vì sao, để popup bày ra cho người dùng.
+ *
+ * @returns {Promise<{ok:boolean, ma?:string, thongBao?:string,
+ *                    soNoi:number, soDat:number, soHong:number, chiTiet:Array}>}
+ */
+async function guiTin(caiDat, chu, layFetch, doiHo) {
+    const c = caiDat || {};
+    const token = chuoi(c.telegramToken);
+    const cacChat = tachChatId(c.telegramChatId);
+    const trong = { soNoi: 0, soDat: 0, soHong: 0, chiTiet: [] };
+    // Chưa khai thì THÔI, không phải lỗi: người dùng có thể cố ý không dùng.
+    if (!token || !cacChat.length) return { ok: false, ma: 'CHUA_KHAI_BAO', ...trong };
+    if (!chuoi(chu)) return { ok: false, ma: 'KHONG_CO_NOI_DUNG', ...trong };
+
+    const fetchDung = layFetch || (typeof fetch !== 'undefined' ? fetch : null);
+    if (!fetchDung) return { ok: false, ma: 'KHONG_CO_FETCH', ...trong };
+
+    const chiTiet = [];
+    for (const chat of cacChat) {
+        // ⚠️ TUẦN TỰ, không Promise.all. Telegram chặn tốc độ (429) khi bắn dồn,
+        // mà một lượt chạy chỉ có vài nơi nhận — nhanh hơn vài trăm mili-giây
+        // không đáng để đánh đổi lấy một tin bị chặn.
+        const r = await guiMotNoi(token, chat, chu, fetchDung, doiHo);
+        chiTiet.push({ chat, ok: !!r.ok, ma: r.ma, thongBao: r.thongBao });
+    }
+
+    const hong = chiTiet.filter(x => !x.ok);
+    const dat = chiTiet.length - hong.length;
+    const keHong = hong.map(x => `${x.chat}: ${x.thongBao || x.ma || 'không rõ'}`).join(' · ');
+    return {
+        ok: dat > 0,
+        // Hỏng hết thì mượn mã của nơi đầu tiên, để mã lý do cũ vẫn dùng được.
+        ...(dat > 0 ? {} : { ma: (hong[0] && hong[0].ma) || 'KHONG_GUI_DUOC' }),
+        ...(keHong ? { thongBao: keHong } : {}),
+        soNoi: chiTiet.length, soDat: dat, soHong: hong.length, chiTiet,
+    };
 }
 
 /**
@@ -353,6 +444,19 @@ async function docTraLoi(tra) {
                            + 'bất kỳ trước (bot không nhắn trước cho người lạ được), rồi bấm '
                            + '"Dò chat id".' };
     }
+    // ⚠️ 429 LÀ LỖI TẠM THỜI, KHÁC HẲN MỌI LỖI TRÊN. Telegram chặn tốc độ
+    // (khoảng 20 tin/phút vào cùng một nhóm) rồi bảo đợi bao lâu. Từ 26/08/2026
+    // mỗi tin đi tới NHIỀU nơi nên số lần gọi nhân lên, dễ chạm ngưỡng hơn hẳn.
+    //
+    // Phải tách riêng vì luật "hỏng một phần thì giữ dấu" biến một cái ngừng vài
+    // giây thành MẤT TIN VĨNH VIỄN ở nơi bị chặn. Bên gọi (guiMotNoi) đợi rồi
+    // thử lại chính nơi đó.
+    if (maSo === 429) {
+        const cho = Number(than && than.parameters && than.parameters.retry_after) || 0;
+        return { ok: false, ma: 'BI_CHAN_TOC_DO', choGiay: cho,
+                 thongBao: 'Telegram chặn tốc độ, bảo đợi '
+                           + (cho ? cho + ' giây' : 'một lát') + '.' };
+    }
     if (maSo === 403) {
         return { ok: false, ma: 'BOT_BI_CHAN',
                  thongBao: 'Bot đang bị chặn hoặc bạn chưa bắt đầu đoạn chat. Mở Telegram, '
@@ -377,6 +481,19 @@ function guiThu(caiDat, layFetch, luc) {
  * Người dùng không có cách nào tự biết chat id của mình. Bắt họ đi tìm ở một
  * bot lạ nào đó là đẩy bí mật sang tay bên thứ ba — dò bằng chính bot của mình
  * thì không phải nhờ ai.
+ *
+ * ⚠️ TRẢ VỀ CẢ NHÓM, KHÔNG CÒN LỌC RIÊNG CHAT CÁ NHÂN — chủ dự án đảo lại
+ * quyết định cũ ngày 26/08/2026 khi muốn báo về cả nhóm. Bản cũ lọc
+ * `type === 'private'`, nên thêm bot vào nhóm xong bấm nút này vẫn không bao
+ * giờ ra id nhóm, và người dùng không hiểu vì sao.
+ *
+ * ⚠️ NHÓM CHỈ HIỆN RA KHI BOT ĐỌC ĐƯỢC TIN. Telegram mặc định BẬT "privacy
+ * mode": trong nhóm, bot chỉ nhận tin bắt đầu bằng "/" hoặc có nhắc tên nó.
+ * Nên phải bảo người dùng gõ "/start@tên_bot" TRONG NHÓM, chứ nhắn câu thường
+ * là getUpdates rỗng và nút này im lặng vô lý.
+ *
+ * `chatId` / `ten` vẫn giữ nguyên (nơi gần nhất) để chỗ gọi cũ không phải sửa;
+ * `cacChat` là danh sách đầy đủ để màn khai báo bày ra cho người dùng chọn.
  */
 async function doChatId(caiDat, layFetch) {
     const token = chuoi((caiDat || {}).telegramToken);
@@ -395,18 +512,32 @@ async function doChatId(caiDat, layFetch) {
     const kq = await docTraLoi(tra);
     if (!kq.ok) return kq;
 
-    // Lấy đoạn chat RIÊNG gần nhất. Nhóm thì bỏ qua: chủ dự án chốt chat riêng.
     const tin = ((kq.than && kq.than.result) || [])
         .map(u => (u && (u.message || u.edited_message)) || null)
-        .filter(m => m && m.chat && chuoi(m.chat.type) === 'private');
+        .filter(m => m && m.chat && m.chat.id != null);
     if (!tin.length) {
         return { ok: false, ma: 'CHUA_CO_TIN',
-                 thongBao: 'Chưa thấy tin nhắn nào. Mở Telegram, NHẮN CHO BOT một câu bất kỳ '
-                           + 'rồi bấm lại nút này.' };
+                 thongBao: 'Chưa thấy tin nhắn nào. Muốn lấy CHAT RIÊNG thì nhắn cho bot '
+                           + 'một câu bất kỳ; muốn lấy NHÓM thì vào nhóm gõ '
+                           + '"/start@tên_bot" (nhóm phải gõ đúng kiểu này, bot không '
+                           + 'đọc được tin thường). Xong bấm lại nút này.' };
     }
-    const cuoi = tin[tin.length - 1];
-    return { ok: true, chatId: String(cuoi.chat.id),
-             ten: chuoi(cuoi.chat.username || cuoi.chat.first_name) };
+
+    // Bỏ trùng theo id, GIỮ LẦN NHẮC CUỐI CÙNG của mỗi nơi — tên nhóm có thể
+    // vừa đổi, và cái mới mới là cái người dùng đang nhìn thấy trên Telegram.
+    const theoId = new Map();
+    for (const m of tin) {
+        const ch = m.chat;
+        theoId.set(String(ch.id), {
+            id: String(ch.id),
+            loai: chuoi(ch.type),
+            nhom: chuoi(ch.type) !== 'private',
+            ten: chuoi(ch.title || ch.username || ch.first_name),
+        });
+    }
+    const cacChat = [...theoId.values()];
+    const cuoi = cacChat[cacChat.length - 1];
+    return { ok: true, chatId: cuoi.id, ten: cuoi.ten, cacChat };
 }
 
 // ── ĐƯỜNG CHÍNH: BÁO CHO MỘT MẺ DÒNG ───────────────────────────────────────
@@ -437,6 +568,13 @@ async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
             const gui = await guiTin(c, soanTin(dong), layFetch);
             if (gui.ok) {
                 kq.daGui++;
+                // ⚠️ GỬI ĐƯỢC MỘT NƠI CŨNG LÀ `ok` (xem guiTin), nên chỗ này
+                // phải TỰ NÓI RA nơi nào trượt. Không nói thì màn khai báo chỉ
+                // thấy "✓ đã nhắn N tin" trong khi cả tháng nhóm không nhận gì.
+                if (Number(gui.soHong) > 0) {
+                    kq.hongMotPhan = (kq.hongMotPhan || 0) + Number(gui.soHong);
+                    kq.thongBao = gui.thongBao;
+                }
             } else {
                 // Trả chỗ để lượt gửi lại ở cuối loạt còn thử được lần nữa.
                 await traCho(kho, ma);
@@ -456,7 +594,8 @@ async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
 const API = {
     baoCacDong, baoLuot, soanTin, soanTinLuot, maLuot, nenBao, loaiTin,
     chuGio, chuNgay, ngayTrongGio, donSo, LY_DO_YEN_A,
-    gianhCho, traCho, guiTin, guiThu, doChatId, docTraLoi,
+    gianhCho, traCho, guiTin, guiMotNoi, guiMotLan, tachChatId, guiThu, doChatId, docTraLoi,
+    CHO_TOI_DA_GIAY, SO_LAN_THU_LAI,
     KHOA_SO_DA_BAO, KHOA_TRANG_THAI, GIOI_HAN_SO, NGAY_GIU, MUI_GIO,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

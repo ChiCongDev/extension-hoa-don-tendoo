@@ -663,11 +663,20 @@ function gan(goc, phuThuoc) {
             'Cần một bot RIÊNG: mở @BotFather trên Telegram, gõ /newbot, lấy token. '
             + 'Rồi NHẮN CHO BOT một câu bất kỳ (bot không nhắn trước cho người lạ được) '
             + 'và bấm "Dò chat id".'));
+        // ⚠️ Đường vào NHÓM khác hẳn đường vào chat riêng, và không ai đoán ra:
+        // Telegram mặc định không cho bot đọc tin thường trong nhóm, nên nhắn
+        // một câu vào nhóm là nút "Dò chat id" im lặng vô lý. Phải nói ra đây.
+        khoi.appendChild(tao('div', 'hdt-dan',
+            'Muốn báo vào NHÓM: thêm bot vào nhóm, rồi gõ trong nhóm "/start@tên_bot" '
+            + '(phải có @tên_bot — bot không đọc được tin thường trong nhóm), xong bấm '
+            + '"Dò chat id". Ô "Chat id" nhận NHIỀU nơi, cách nhau dấu phẩy — điền cả '
+            + 'nhóm lẫn chat riêng thì cả hai cùng nhận.'));
 
         const tt = tao('div', 'hdt-dan');
         tt.id = 'kbTgTrangThai';
         if (daDu) {
-            tt.textContent = `✓ Đã nối — token đã lưu · chat id ${c.telegramChatId}.`;
+            const soNoi = String(c.telegramChatId).split(',').filter(x => x.trim()).length;
+            tt.textContent = `✓ Đã nối — token đã lưu · ${soNoi} nơi nhận: ${c.telegramChatId}.`;
         } else if (!c.telegramDaCoToken && !c.telegramChatId) {
             tt.textContent = 'Chưa bật — để trống thì máy không nhắn gì cả.';
         } else {
@@ -688,6 +697,16 @@ function gan(goc, phuThuoc) {
                     + (lanBaoTg.thongBao || lanBaoTg.ma || 'không rõ');
                 l.style.color = '#b91c1c';
                 l.style.fontWeight = '600';
+            } else if (Number(lanBaoTg.hongMotPhan) > 0) {
+                // ⚠️ HỎNG MỘT PHẦN: tin ĐÃ tới được ít nhất một nơi nên máy
+                // không gửi lại (gửi lại là nơi kia nhận hai lần). Nghĩa là nơi
+                // trượt MẤT HẲN tin đó. Phải kêu lên bằng màu đỏ như hỏng hẳn,
+                // chứ không ai đi soi con số nhỏ trong câu "đã nhắn N tin".
+                l.textContent = `✗ Lần báo gần nhất CÓ NƠI KHÔNG NHẬN ĐƯỢC (đã nhắn `
+                    + `${lanBaoTg.daGui} tin): ` + (lanBaoTg.thongBao || 'không rõ')
+                    + ' — những tin đó KHÔNG gửi lại, sửa chat id rồi mới nhận tin sau.';
+                l.style.color = '#b91c1c';
+                l.style.fontWeight = '600';
             } else if (Number(lanBaoTg.daGui) > 0) {
                 l.textContent = `✓ Lần báo gần nhất: đã nhắn ${lanBaoTg.daGui} tin.`;
                 l.style.color = '#15803d';
@@ -697,8 +716,8 @@ function gan(goc, phuThuoc) {
 
         khoi.appendChild(oNhap('kbTgToken', 'Token bot Telegram', 'password',
             c.telegramDaCoToken ? '(đã lưu — gõ để đổi)' : 'Dán token từ @BotFather'));
-        khoi.appendChild(oNhap('kbTgChatId', 'Chat id', 'text',
-            'Bấm "Dò chat id" là máy tự điền'));
+        khoi.appendChild(oNhap('kbTgChatId', 'Chat id (nhiều nơi thì cách nhau dấu phẩy)',
+            'text', 'Bấm "Dò chat id" là máy tự điền, VD: 123456789, -1001234567890'));
 
         const hang = tao('div', 'hdt-cong-cu');
         const nutLuu = tao('button', 'hdt-chinh', 'Lưu');
@@ -855,20 +874,43 @@ function gan(goc, phuThuoc) {
         return veLai();
     }
 
+    /**
+     * Dò chat id và CỘNG THÊM vào ô, không thay thế.
+     *
+     * ⚠️ CỘNG THÊM là điểm mấu chốt từ 26/08/2026. Bản cũ ghi đè ô: người dùng
+     * đã có chat riêng trong ô, bấm dò để lấy thêm nhóm, thì chat riêng BIẾN
+     * MẤT — mà họ chỉ phát hiện ra lúc lượt chạy đêm không nhắn về nữa.
+     * Thừa một id thì thấy ngay và xoá được; thiếu một id thì im lặng.
+     */
     async function doChatId() {
         baoTg = { chu: 'Đang dò…', loi: false };
         veLai();
         const kq = await guiNen({ loai: 'hdt-telegram-do-chat-id' });
         if (kq && kq.ok && kq.chatId) {
-            const o = layO('kbTgChatId');
-            if (o) o.value = kq.chatId;
-            baoTg = { chu: `✓ Thấy chat id ${kq.chatId}${kq.ten ? ' (' + kq.ten + ')' : ''}. `
-                + 'Bấm Lưu để dùng.', loi: false };
+            const dangCo = String((layO('kbTgChatId') || {}).value || '')
+                .split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+            const timThay = (kq.cacChat && kq.cacChat.length)
+                ? kq.cacChat
+                : [{ id: kq.chatId, ten: kq.ten, nhom: false }];
+
+            const moi = [];
+            for (const ch of timThay) {
+                if (dangCo.includes(String(ch.id))) continue;
+                dangCo.push(String(ch.id));
+                moi.push(ch);
+            }
+            const chuoiMoi = dangCo.join(', ');
+
+            const ke = (ds) => ds.map(x =>
+                `${x.id}${x.ten ? ' (' + x.ten + ')' : ''}${x.nhom ? ' [nhóm]' : ''}`).join(', ');
+            baoTg = moi.length
+                ? { chu: `✓ Thêm ${moi.length} nơi: ${ke(moi)}. Bấm Lưu để dùng.`, loi: false }
+                : { chu: `✓ Thấy ${ke(timThay)} — ô đã có sẵn rồi, không thêm gì.`, loi: false };
+
             // Điền lại SAU khi vẽ, vì veLai() dựng lại cả màn hình.
-            const chatMoi = kq.chatId;
             veLai();
             const o2 = layO('kbTgChatId');
-            if (o2) o2.value = chatMoi;
+            if (o2) o2.value = chuoiMoi;
             return goc;
         }
         baoTg = { chu: '✗ Không dò được: '
@@ -880,8 +922,17 @@ function gan(goc, phuThuoc) {
         baoTg = { chu: 'Đang gửi…', loi: false };
         veLai();
         const kq = await guiNen({ loai: 'hdt-telegram-gui-thu' });
+        if (kq && kq.ok && Number(kq.soHong) > 0) {
+            // ⚠️ GỬI ĐƯỢC MỘT NƠI KHÔNG PHẢI LÀ XONG. Báo "✓ đã gửi" gọn lỏn ở
+            // đây là nơi hỏng im lặng vĩnh viễn — đúng cái bẫy mà cả khối này
+            // dựng lên để tránh.
+            baoTg = { chu: `⚠ Gửi được ${kq.soDat}/${kq.soNoi} nơi. Nơi hỏng — `
+                + (kq.thongBao || kq.ma || 'không rõ'), loi: true };
+            return veLai();
+        }
         baoTg = kq && kq.ok
-            ? { chu: '✓ Đã gửi — mở Telegram xem có tin chưa.', loi: false }
+            ? { chu: `✓ Đã gửi tới ${kq.soDat || 1} nơi — mở Telegram xem có tin chưa.`,
+                loi: false }
             : { chu: '✗ Chưa gửi được: '
                 + ((kq && (kq.thongBao || kq.ma)) || 'không rõ'), loi: true };
         return veLai();

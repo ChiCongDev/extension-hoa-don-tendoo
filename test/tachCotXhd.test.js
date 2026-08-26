@@ -327,8 +327,15 @@ test('CSV bám đúng bảng đang hiện — số ô khớp số tiêu đề', 
 
 ghiChu('── Không phá nếp cũ ──');
 
-test('⭐ phiên bản đã tăng', () => {
-    assert.strictEqual(JSON.parse(doc('manifest.json')).version, '2.33.0');
+test('⭐ phiên bản KHÔNG tụt về trước bản mang tính năng này', () => {
+    // ⚠️ KHÔNG so BẰNG một con số. Bản 2.33.0 là bản đầu tiên có tách cột; mọi
+    // bản sau đều phải lớn hơn. So bằng thì lần tăng phiên bản kế tiếp là test
+    // này đỏ vì một lý do chẳng liên quan gì tới việc tách cột.
+    const so = (v) => String(v).split('.').map(Number);
+    const [a, b, c] = so(JSON.parse(doc('manifest.json')).version);
+    const [x, y, z] = so('2.33.0');
+    const lon = a !== x ? a > x : (b !== y ? b > y : c >= z);
+    assert.ok(lon, 'phiên bản tụt về trước 2.33.0 — bản đó chưa có tách cột');
 });
 
 test('cột "chưa xuất hóa đơn" KHÔNG đổi nghĩa', () => {

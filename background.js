@@ -865,7 +865,11 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
     if (tin.loai === 'hdt-telegram-gui-thu') {
         khoCaiDat.doc()
             .then(c => self.HDT_BaoTelegram.guiThu(c, null, Date.now()))
-            .then(kq => traLoi({ ok: !!kq.ok, ma: kq.ma, thongBao: kq.thongBao }))
+            // ⚠️ CHUYỂN CẢ SỐ NƠI ĐẠT/HỎNG. Từ 26/08/2026 tin đi tới nhiều nơi;
+            // chỉ trả `ok` thì gửi được 1 trong 2 nơi cũng hiện "✓ đã gửi", và
+            // cái nơi hỏng im lặng mãi mãi.
+            .then(kq => traLoi({ ok: !!kq.ok, ma: kq.ma, thongBao: kq.thongBao,
+                                 soNoi: kq.soNoi, soDat: kq.soDat, soHong: kq.soHong }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
         return true;
     }
@@ -875,6 +879,7 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
         khoCaiDat.doc()
             .then(c => self.HDT_BaoTelegram.doChatId(c))
             .then(kq => traLoi({ ok: !!kq.ok, chatId: kq.chatId, ten: kq.ten,
+                                 cacChat: kq.cacChat || [],
                                  ma: kq.ma, thongBao: kq.thongBao }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
         return true;

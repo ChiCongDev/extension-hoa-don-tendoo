@@ -1017,4 +1017,233 @@ test('⭐ danh sách khách hiện được nhiều dòng hơn', () => {
         `danh sách chỉ cao ${m[1]}px — nhìn được hai khách rồi phải cuộn`);
 });
 
+ghiChu('— Ô tiền/ngày: chấm ngăn nghìn ngay lúc gõ (chủ dự án chốt 28/08/2026) —');
+
+test('⭐ chấm ngăn nghìn: bỏ mọi dấu người gõ rồi tự đặt lại', () => {
+    const f = ChenCot.chamNganNghin;
+    assert.strictEqual(f('7000000'), '7.000.000');
+    assert.strictEqual(f('7.000.000'), '7.000.000', 'gõ sẵn dấu chấm thì không nhân đôi');
+    assert.strictEqual(f('1500'), '1.500');
+    assert.strictEqual(f('999'), '999', 'dưới nghìn thì không có dấu');
+});
+
+test('⭐⭐ RỖNG vào thì RỖNG ra, KHÔNG ra số 0', () => {
+    // Ô trống nghĩa là "không đặt tiền/ngày"; số 0 là một con số. Trả "0" ở đây
+    // là tự bật tính năng cho khách chưa hề được chọn.
+    for (const v of ['', null, undefined, 'abc', '   ']) {
+        assert.strictEqual(ChenCot.chamNganNghin(v), '', 'sai với: ' + JSON.stringify(v));
+    }
+});
+
+test('⭐ bỏ số 0 thừa ở đầu', () => {
+    assert.strictEqual(ChenCot.chamNganNghin('007'), '7');
+    assert.strictEqual(ChenCot.chamNganNghin('0'), '0', 'số 0 đơn độc vẫn giữ');
+});
+
+test('⭐⭐ "1.5" KHÔNG còn là bẫy trong ô này nữa', () => {
+    // Bộ đọc số cố ý từ chối "1.5" vì người gõ vậy định nói 1,5 triệu mà máy
+    // hiểu mười lăm đồng. Ô này tự đặt lại dấu nên không bao giờ ở trạng thái
+    // ấy — nhưng chốt bên caiDat PHẢI CÒN, vì đường lưu khác vẫn đi qua đó.
+    assert.strictEqual(ChenCot.chamNganNghin('1.5'), '15');
+    const CaiDat = require('../chung/caiDat');
+    assert.strictEqual(CaiDat.chuanSoTienNgay('1.5'), null,
+        'chốt chống "1.5" bên caiDat đã bị gỡ — đường lưu khác lại dính bẫy cũ');
+});
+
+test('⭐⭐ CON TRỎ giữ đúng chỗ sau khi chèn dấu chấm', () => {
+    // Không giữ thì con trỏ nhảy về cuối mỗi ký tự; sửa một chữ số ở giữa là ra
+    // số hoàn toàn khác, mà số này đi thẳng vào hóa đơn thuế.
+    const v = ChenCot.viTriConTro;
+    assert.strictEqual(v('7000000', 7, '7.000.000'), 9, 'gõ xong mà con trỏ không ở cuối');
+    assert.strictEqual(v('1500', 4, '1.500'), 5);
+    // Xoá một chữ số ở giữa: trước con trỏ còn 3 chữ số -> phải đứng sau "700".
+    assert.strictEqual(v('7.00.000', 4, '700.000'), 3, 'con trỏ nhảy lung tung khi sửa giữa số');
+    assert.strictEqual(v('', 0, ''), 0);
+    // ⚠️ CON TRỎ Ở ĐẦU Ô phải ở lại đầu. Chuỗi MỚI không rỗng nên nếu trả
+    // `chuMoi.length` thì nó nhảy xuống cuối — người dùng bấm về đầu ô để sửa
+    // chữ số đầu tiên, gõ một cái là số bị nối vào đuôi.
+    assert.strictEqual(v('7000000', 0, '7.000.000'), 0,
+        'đặt con trỏ ở đầu ô mà nó nhảy xuống cuối');
+});
+
+test('⭐⭐⭐ GÕ THẬT giữa số: con trỏ Ở LẠI ĐÚNG CHỖ', async () => {
+    // ⚠️ Bài trên chỉ kiểm HÀM. Bài này kiểm NỐI DÂY: đổi giá trị ô là trình
+    // duyệt đẩy con trỏ về cuối, nên nếu quên gọi setSelectionRange thì sửa một
+    // chữ số ở giữa là gõ tiếp ra số hoàn toàn khác — mà số này đi thẳng vào
+    // hóa đơn thuế.
+    const { tailieu, bang } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const o = tailieu.querySelector('#hdt-hen-ds-khach input.hdt-tien-ngay');
+    o.value = '7000000';
+    o.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+    assert.strictEqual(o.value, '7.000.000');
+
+    // Người dùng bấm con trỏ vào sau chữ số thứ 3 ("7.00|0.000") rồi gõ thêm 9.
+    o.setSelectionRange(4, 4);
+    o.value = '7.009' + '0.000'.slice(0);      // chèn '9' ngay sau "7.00"
+    o.setSelectionRange(5, 5);
+    o.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+    assert.strictEqual(o.value, '70.090.000', 'chấm lại sai sau khi chèn giữa số');
+    // Trước con trỏ có 4 chữ số ("7009") -> phải đứng ngay sau chữ số thứ tư,
+    // tức sau "70.09" = vị trí 5. (Đếm cả dấu chấm thì ra 6 — đó chính là lỗi
+    // vòng gài lỗi dựng lên, nên con số này phải chính xác.)
+    assert.strictEqual(o.selectionStart, 5,
+        `con trỏ ở ${o.selectionStart}, phải ở 5 — gõ tiếp là ra số khác hẳn`);
+});
+
+test('⭐⭐⭐ GÕ THẬT vào ô: "7000000" hiện ra "7.000.000"', async () => {
+    const { tailieu, bang } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const o = tailieu.querySelector('#hdt-hen-ds-khach input.hdt-tien-ngay');
+    assert.ok(o, 'không thấy ô tiền/ngày');
+    o.value = '7000000';
+    o.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+    assert.strictEqual(o.value, '7.000.000',
+        'gõ số trần mà ô vẫn hiện số trần — đúng cái chủ dự án phàn nàn');
+});
+
+test('⭐⭐ GÕ THẬT: chữ và dấu rác bị loại, ô không kẹt giá trị bậy', async () => {
+    const { tailieu, bang } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const o = tailieu.querySelector('#hdt-hen-ds-khach input.hdt-tien-ngay');
+    o.value = '5tr';
+    o.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+    assert.strictEqual(o.value, '5');
+});
+
+test('⭐⭐ MỞ LẠI bảng: số đã lưu hiện có dấu chấm', async () => {
+    const { tailieu, bang } = dungTrang({ caiDat: {
+        henGio: { bat: true, moc: ['09:00'], khach: [
+            { maKH: 'PA', tenKH: 'PA', soTienNgay: 5000000, mocTien: '10:00',
+              batHeThong: false, batTuChon: true },
+        ] },
+    } });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const o = tailieu.querySelector('input.hdt-tien-ngay[data-ma="PA"]');
+    assert.ok(o, 'không thấy dòng khách đã lưu');
+    assert.strictEqual(o.value, '5.000.000',
+        'mở bảng thấy số trần, gõ vào thì có dấu chấm — hai kiểu trong cùng một ô');
+});
+
+test('⭐⭐ số gửi đi khi LƯU vẫn đọc được, dù ô có dấu chấm', async () => {
+    const { tailieu, bang, daGui } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const ds = tailieu.getElementById('hdt-hen-ds-khach');
+    const tick = ds.querySelector('input.hdt-tick-hen');
+    const ma = tick.dataset.ma;
+    tick.checked = true;
+    ds.querySelector(`input.hdt-bat-tc[data-ma="${ma}"]`).checked = true;
+    ds.querySelector(`input.hdt-gio-tien[data-ma="${ma}"]`).value = '10:00';
+    const o = ds.querySelector(`input.hdt-tien-ngay[data-ma="${ma}"]`);
+    o.value = '7000000';
+    o.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+
+    tailieu.getElementById('hdt-luu-cai-dat').click();
+    await doiMotNhip();
+    await doiMotNhip();
+
+    const tin = daGui.filter(t => t.loai === 'hdt-dat-cai-dat').pop();
+    const k = ((tin.henGio || {}).khach || []).find(x => x.maKH === ma);
+    assert.ok(k, 'khách vừa tích không có trong gói gửi đi');
+    const CaiDat = require('../chung/caiDat');
+    assert.strictEqual(CaiDat.chuanSoTienNgay(k.soTienNgay), 7000000,
+        'ô có dấu chấm mà bộ đọc số không hiểu -> lưu xong mất luôn số tiền');
+});
+
+ghiChu('— SỐ QUÁ LỚN: không được đổi thầm một chữ số nào —');
+
+test('⭐⭐⭐ chấm ngăn nghìn GIỮ NGUYÊN từng chữ số, kể cả trên 2^53', () => {
+    // ⚠️ `Number()` mất chính xác trên 2^53: "9007199254740993" ra "…992",
+    // "99999999999999999999" ra "100.000.000.000.000.000.000". Ô này đi thẳng
+    // vào hóa đơn thuế — đổi thầm một chữ số là chuyện không được phép, dù con
+    // số ấy vô lý cỡ nào.
+    const f = ChenCot.chamNganNghin;
+    assert.strictEqual(f('9007199254740993'), '9.007.199.254.740.993');
+    assert.strictEqual(f('99999999999999999999'), '99.999.999.999.999.999.999');
+    assert.strictEqual(f('12345678901234567890'), '12.345.678.901.234.567.890');
+});
+
+test('⭐⭐ bộ đọc số TỪ CHỐI số máy không giữ nổi từng đồng', () => {
+    // Thà từ chối còn hơn lưu một số KHÁC số người dùng gõ.
+    const CaiDat = require('../chung/caiDat');
+    assert.strictEqual(CaiDat.chuanSoTienNgay('9007199254740991'), 9007199254740991,
+        'từ chối cả số vẫn giữ được — chặt quá hoá sai');
+    assert.strictEqual(CaiDat.chuanSoTienNgay('9007199254740993'), null,
+        'lưu một số lệch một đồng so với thứ người dùng gõ');
+    assert.strictEqual(CaiDat.chuanSoTienNgay('12345678901234567890'), null);
+});
+
+test('⭐⭐ bảng KÊU LÊN khi số tiền không dùng được', async () => {
+    // Hai đường đều im lặng nếu không nói ra: ô tiền trống, và số quá lớn bị bộ
+    // đọc số từ chối. Cả hai dẫn tới "hôm đó không có hóa đơn nào" mà bảng
+    // trông vẫn bình thường.
+    const HenGio = require('../chung/henGio');
+    const goi = { bat: true, moc: ['09:00'], khach: [
+        { maKH: 'A', batTuChon: true, mocTien: '10:00' },
+        { maKH: 'B', batTuChon: true, mocTien: '10:00', soTienNgay: 5000000 },
+    ] };
+    assert.deepStrictEqual(
+        HenGio.khachThieuTienTuChon(goi).map(k => k.maKH), ['A'],
+        'không nhận ra khách bật tiền/ngày mà chưa có số tiền dùng được');
+
+    // ⚠️ PHẢI CÓ GIỜ CHUNG. Không có thì khách còn dính lỗi "chưa có giờ nào",
+    // và chữ đỏ lên vì lý do khác — bài kiểm không phân biệt được cái mình
+    // đang canh. Vòng gài lỗi chỉ ra đúng chỗ này.
+    const { tailieu, bang } = dungTrang({ caiDat: {
+        henGio: { bat: true, moc: ['09:00'], khach: [] },
+    } });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const ds = tailieu.getElementById('hdt-hen-ds-khach');
+    const o = ds.querySelector('input.hdt-tick-hen');
+    const ma = o.dataset.ma;
+    o.checked = true;
+    ds.querySelector(`input.hdt-bat-tc[data-ma="${ma}"]`).checked = true;
+    ds.querySelector(`input.hdt-gio-tien[data-ma="${ma}"]`).value = '10:00';
+    ds.dispatchEvent(new tailieu.defaultView.Event('change', { bubbles: true }));
+    await doiMotNhip();
+    const ghi = tailieu.getElementById('hdt-hen-khach');
+    assert.ok(!/CHƯA CÓ GIỜ NÀO/.test(ghi.textContent),
+        'còn lý do đỏ khác -> bài kiểm không phân biệt được: ' + ghi.textContent);
+    assert.match(ghi.textContent, /SỐ TIỀN KHÔNG DÙNG ĐƯỢC/,
+        'bật tiền/ngày mà quên gõ số -> im lặng không ra hóa đơn nào');
+    // ⚠️ PHẢI ĐỎ. Kêu bằng chữ xám thì lẫn vào đám ghi chú ngay bên cạnh —
+    // người dùng lướt qua, bấm Lưu, rồi tối ngồi đợi một tờ không bao giờ tới.
+    assert.ok(ghi.classList.contains('hdt-do'),
+        'cảnh báo hiện bằng chữ xám, không ai để ý');
+});
+
+test('⭐⭐⭐ số HỢP LỆ có dấu chấm KHÔNG bị báo nhầm là thiếu tiền', async () => {
+    // ⚠️ Ô nhập trả CHUỖI THÔ ("7.000.000"); `Number()` trên đó ra NaN. Nếu
+    // bảng xem chuỗi thô thì nó kêu "chưa có số tiền" cho một số hoàn toàn hợp
+    // lệ — màn hình nói một đằng, máy chạy một nẻo.
+    const { tailieu, bang } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const ds = tailieu.getElementById('hdt-hen-ds-khach');
+    const o = ds.querySelector('input.hdt-tick-hen');
+    const ma = o.dataset.ma;
+    o.checked = true;
+    ds.querySelector(`input.hdt-bat-tc[data-ma="${ma}"]`).checked = true;
+    ds.querySelector(`input.hdt-gio-tien[data-ma="${ma}"]`).value = '10:00';
+    const oTien = ds.querySelector(`input.hdt-tien-ngay[data-ma="${ma}"]`);
+    oTien.value = '7000000';
+    oTien.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await doiMotNhip();
+    const chu = tailieu.getElementById('hdt-hen-khach').textContent;
+    assert.strictEqual(oTien.value, '7.000.000');
+    assert.ok(!/SỐ TIỀN KHÔNG DÙNG ĐƯỢC/.test(chu),
+        'số hợp lệ mà bảng vẫn kêu thiếu tiền: ' + chu);
+});
+
 chay('BẢNG CÀI ĐẶT: ĐỘ LỆCH VÀ HẸN GIỜ');

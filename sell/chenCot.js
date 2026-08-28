@@ -32,6 +32,59 @@ const ID_MODAL = 'hdt-modal';
 
 const tienVN = so => new Intl.NumberFormat('vi-VN').format(so);
 
+/**
+ * CHẤM NGĂN NGHÌN cho thứ người dùng vừa gõ vào ô tiền.
+ *
+ * ⚠️ DẤU CHẤM Ở ĐÂY LÀ NGĂN NGHÌN, KHÔNG PHẢI DẤU THẬP PHÂN. Bộ đọc số
+ * (`caiDat.chuanSoTienNgay`) CỐ Ý từ chối "1.5", vì người gõ vậy gần như chắc
+ * chắn định nói 1,5 triệu mà máy lại hiểu MƯỜI LĂM ĐỒNG rồi đem đi xuất hóa đơn
+ * thuế. Hàm này bóc sạch mọi dấu người dùng gõ rồi tự đặt lại, nên ô ấy không
+ * bao giờ còn ở trạng thái "1.5" — nhưng chốt bên `chuanSoTienNgay` VẪN GIỮ, vì
+ * cài đặt cũ và các đường lưu khác vẫn đi qua đó.
+ *
+ * Bỏ mọi ký tự không phải chữ số (kể cả chữ), và bỏ số 0 thừa ở đầu. Rỗng vào
+ * thì rỗng ra — KHÔNG trả "0", vì ô trống nghĩa là "không đặt", khác hẳn số 0.
+ */
+function chamNganNghin(chu) {
+    // ⚠️ GHÉP THẲNG TRÊN CHUỖI, KHÔNG QUA `Number()`. Trên 2^53 (khoảng 9 triệu
+    // tỷ) `Number()` mất chính xác, và ô sẽ hiện MỘT SỐ KHÁC HẲN số người dùng
+    // vừa gõ: "9007199254740993" ra "…992", "99999999999999999999" ra
+    // "100.000.000.000.000.000.000". Với ô đi thẳng vào hóa đơn thuế thì đổi
+    // thầm một chữ số là chuyện không được phép, dù con số ấy vô lý cỡ nào.
+    //
+    // Vì bỏ `Number()` nên bước lọc số 0 thừa ở đầu QUAY LẠI LÀM VIỆC THẬT:
+    // trước đây `Number('007')` tự bỏ giúp, giờ không còn ai bỏ nữa.
+    const so = String(chu == null ? '' : chu).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    return so ? so.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+
+/**
+ * Đặt lại con trỏ sau khi chèn dấu chấm.
+ *
+ * ⚠️ KHÔNG CÓ HÀM NÀY THÌ TÍNH NĂNG THÀNH PHIỀN PHỨC. Mỗi lần chuỗi đổi, trình
+ * duyệt đẩy con trỏ về CUỐI ô; sửa một chữ số ở giữa là con trỏ nhảy đi, gõ tiếp
+ * ra số hoàn toàn khác. Với ô đi thẳng vào hóa đơn thuế thì đó không phải phiền
+ * phức mà là nguy hiểm.
+ *
+ * Cách đếm: giữ nguyên SỐ CHỮ SỐ đứng trước con trỏ, rồi dò trong chuỗi mới tới
+ * đúng chữ số thứ ấy. Dấu chấm thêm hay bớt bao nhiêu cũng không lệch.
+ *
+ * @returns {number} vị trí con trỏ trong chuỗi MỚI
+ */
+function viTriConTro(chuCu, viTriCu, chuMoi) {
+    const truoc = String(chuCu || '').slice(0, Math.max(0, viTriCu));
+    const soChuSo = (truoc.match(/\d/g) || []).length;
+    if (soChuSo === 0) return 0;
+    let dem = 0;
+    for (let i = 0; i < chuMoi.length; i++) {
+        if (/\d/.test(chuMoi[i])) {
+            dem++;
+            if (dem === soChuSo) return i + 1;
+        }
+    }
+    return chuMoi.length;
+}
+
 // ---------------------------------------------------------------- giao diện
 const CSS = `
 .hdt-o { text-align:center; white-space:nowrap; }
@@ -1155,7 +1208,9 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang, lichSuChay) {
         // không so với bất cứ dữ liệu nào. Bản trước có trần theo số dư; đã bỏ.
         oTien.title = 'Mỗi ngày xuất đúng số này, BẤT KỂ doanh số hôm nay và\n'
             + 'KHÔNG so với bất kỳ dữ liệu nào khác.';
-        oTien.value = tienNgayCu.get(k.maKH) || '';
+        // Số đã lưu là số trần (5000000); chấm ngay lúc vẽ cho khớp với thứ
+        // người dùng sẽ thấy khi gõ.
+        oTien.value = chamNganNghin(tienNgayCu.get(k.maKH) || '');
         oTien.classList.toggle('co', !!oTien.value);
         d.appendChild(oTien);
 
@@ -1262,16 +1317,27 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang, lichSuChay) {
                 + 'Tích ít nhất một khách ở trên.';
         } else {
             // Kể theo TỪNG MỐC, để nhìn phát là biết ai chạy lúc nào.
-            const goi = { bat: true, moc: [oMoc.value], khach: ds };
+            //
+            // ⚠️ CHẠY QUA ĐÚNG BỘ CHUẨN HOÁ CỦA LÚC LƯU. Ô nhập trả về CHUỖI
+            // THÔ ("7.000.000", "9h"), còn tiến trình nền chỉ thấy thứ đã qua
+            // `chuanKhach`. Xem chuỗi thô ở đây là màn hình nói một đằng mà máy
+            // chạy một nẻo: `Number("7.000.000")` ra NaN nên bảng sẽ kêu "chưa
+            // có số tiền" trong khi số ấy hoàn toàn hợp lệ.
+            const dsChuan = CaiDat ? CaiDat.chuanKhach(ds, HenGio, oMoc.value) : ds;
+            const goi = { bat: true, moc: [oMoc.value], khach: dsChuan };
             const nhom = HenGio ? HenGio.gomTheoMoc(goi) : [];
             const lacLoi = HenGio ? HenGio.khachKhongCoGio(goi) : [];
             // ⚠️ Gõ tiền mà quên gõ giờ thì phần tự chọn KHÔNG chạy. Không kêu
             // lên ở đây là người dùng bấm Lưu, thấy mọi thứ bình thường, rồi
             // chờ mãi một tờ hóa đơn không bao giờ tới.
             const thieuGio = HenGio ? HenGio.khachThieuGioTien(goi) : [];
+            // ⚠️ Bật tiền/ngày mà ô tiền TRỐNG, hoặc số lớn tới mức bộ đọc số
+            // từ chối (trên 2^53) — cả hai đều dẫn tới "hôm đó không có hóa đơn
+            // nào" trong khi bảng trông vẫn bình thường.
+            const thieuTien = HenGio ? HenGio.khachThieuTienTuChon(goi) : [];
             // Tích khách nhưng tắt cả hai cột = có tên trong lịch mà không chạy
             // lượt nào. Cũng là một cách hỏng im lặng.
-            const tatCaHai = ds.filter(k => !k.batHeThong && !k.batTuChon);
+            const tatCaHai = dsChuan.filter(k => !k.batHeThong && !k.batTuChon);
             // Mỗi mục nay có cờ `kieu` -> ghi rõ ai chạy kiểu gì, kẻo cùng một
             // tên hiện ở hai mốc mà không biết mốc nào là mốc nào.
             const ten = (k) => (k.tenKH || k.maKH) + (k.kieu === 'tu_chon' ? ' (tiền/ngày)' : '');
@@ -1288,12 +1354,18 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang, lichSuChay) {
                     ? ` ⚠ ${thieuGio.length} khách BẬT "tiền/ngày" NHƯNG CHƯA ĐIỀN GIỜ nên phần `
                       + `đó KHÔNG chạy: ${thieuGio.map(k => k.tenKH || k.maKH).join(', ')}`
                     : '')
+                + (thieuTien.length
+                    ? ` ⚠ ${thieuTien.length} khách BẬT "tiền/ngày" NHƯNG SỐ TIỀN KHÔNG DÙNG `
+                      + `ĐƯỢC (trống, hoặc lớn quá mức máy giữ được từng đồng) nên phần đó `
+                      + `KHÔNG chạy: ${thieuTien.map(k => k.tenKH || k.maKH).join(', ')}`
+                    : '')
                 + (tatCaHai.length
                     ? ` ⚠ ${tatCaHai.length} khách TẮT CẢ HAI cột nên không chạy lượt nào: `
                       + `${tatCaHai.map(k => k.tenKH || k.maKH).join(', ')}`
                     : '');
             ghiKhach.classList.toggle('hdt-do',
-                lacLoi.length > 0 || thieuGio.length > 0 || tatCaHai.length > 0);
+                lacLoi.length > 0 || thieuGio.length > 0 || thieuTien.length > 0
+                || tatCaHai.length > 0);
         }
         // ⚠️ CHỮ "CÒN N NGÀY" cạnh từng khách. Con số ngày một mình không nói
         // được gì: người dùng phải nhẩm từ hôm lưu mới ra ngày dừng. Bày thẳng
@@ -1362,6 +1434,21 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang, lichSuChay) {
         // Cả ba ô gõ tay đều phải tô lại và tính lại lời nhắc. Quên ô giờ
         // tiền/ngày ở đây là cảnh báo "chưa điền giờ" không bao giờ tắt đi
         // ngay cả sau khi người dùng đã điền.
+        // ⚠️ CHẤM NGĂN NGHÌN NGAY LÚC GÕ — chủ dự án chốt 28/08/2026, và CHỈ cho
+        // ô tiền/ngày. Phải đặt lại con trỏ: đổi giá trị ô là trình duyệt đẩy
+        // con trỏ về cuối, sửa một chữ số ở giữa thành ra số hoàn toàn khác.
+        // Với ô đi thẳng vào hóa đơn thuế thì đó không phải phiền phức.
+        if (t.classList.contains('hdt-tien-ngay')) {
+            const cu = String(t.value || '');
+            const moi = chamNganNghin(cu);
+            if (moi !== cu) {
+                const viTri = viTriConTro(cu, t.selectionStart, moi);
+                t.value = moi;
+                // jsdom và vài trình duyệt không cho đặt con trỏ trên ô ẩn —
+                // hỏng chỗ này KHÔNG được làm hỏng cả bảng cài đặt.
+                try { t.setSelectionRange(viTri, viTri); } catch (e) { /* kệ */ }
+            }
+        }
         if (t.classList.contains('hdt-gio-rieng') || t.classList.contains('hdt-gio-tien')
             || t.classList.contains('hdt-tien-ngay') || t.classList.contains('hdt-so-ngay')) {
             t.classList.toggle('co', !!String(t.value || '').trim());
@@ -1821,6 +1908,7 @@ function khoiDong(tailieu) {
 
 const API = { chenVao, themTieuDe, suaColspan, themOChanBang, themOChoDong, capNhatThanh,
               dsDaTick, moModal, dongModal, theoDoi, khoiDong, tienVN,
+              chamNganNghin, viTriConTro,
               ganTaiNgheDocBang, ghiNhanTuMay, DUONG_GHI_NHAN,
               moBangCaiDat, veBangCaiDat, veLichSu, veTrangLichSu, MOI_TRANG_LICH_SU,
               veTinhTrangSanSang, veKetQuaThu, ID_CAI_DAT };

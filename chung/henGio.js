@@ -319,6 +319,23 @@ function khachThieuGioTien(henGio) {
 }
 
 /**
+ * Khách BẬT tự chọn nhưng KHÔNG CÓ SỐ TIỀN DÙNG ĐƯỢC -> phần ấy không chạy.
+ *
+ * ⚠️ Hai đường dẫn tới đây, cả hai đều IM LẶNG nếu không nói ra:
+ *   · để trống ô tiền — bật công tắc mà quên gõ số
+ *   · gõ số quá lớn — trên 2^53 thì bộ đọc số TỪ CHỐI, vì JavaScript không giữ
+ *     nổi từng đồng và lưu vào là lưu một số khác số người dùng gõ
+ *
+ * Cả hai đều dẫn tới "hôm đó không có hóa đơn nào" mà bảng cài đặt trông vẫn
+ * bình thường. `soTienNgay` chỉ có mặt khi bộ chuẩn hoá đã nhận, nên thiếu nó
+ * nghĩa là một trong hai ca trên.
+ */
+function khachThieuTienTuChon(henGio) {
+    return ((henGio || {}).khach || []).filter(
+        k => k && k.batTuChon && !(Number(k.soTienNgay) > 0));
+}
+
+/**
  * Hai mốc cách nhau quá sát.
  *
  * Máy chạy TUẦN TỰ từng khách, mỗi khách khoảng nửa phút tới một phút. Hai mốc
@@ -535,7 +552,8 @@ function ghepVoiBang(khachTrongLich, cacDongBang, bangTinCay = true) {
 const API = { TIEN_TO, chuanMotMoc, chuanMoc, chuanMocKeRo, chuanMocThoDai,
               tenBaoThuc, mocTuTen, lanKeTiep, dungLich, duocChay, ghepVoiBang,
               kiemSanSang, gomTheoMoc, khachCuaMoc, khachKhongCoGio,
-              khachThieuGioTien, khachHetHanTuChon, mocQuaSat, LY_DO,
+              khachThieuGioTien, khachThieuTienTuChon, khachHetHanTuChon,
+              mocQuaSat, LY_DO,
               ngayVN, congNgay, ngayHetHanTuChon, hetHanTuChon,
               laNgayCuoiTuChon, soNgayConLai, daChayTuChonHomNay, soNgayChayTiep,
               MUI_GIO };

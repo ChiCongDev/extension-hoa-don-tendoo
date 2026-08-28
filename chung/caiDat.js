@@ -94,6 +94,11 @@ function chuanSoTienNgay(v) {
     if (!/^\d+$/.test(goc) && !/^\d{1,3}(?:[.,]\d{3})+$/.test(goc)) return null;
     const so = Number(goc.replace(/[.,]/g, ''));
     if (!Number.isFinite(so) || !Number.isInteger(so) || so <= 0) return null;
+    // ⚠️ TRÊN 2^53 THÌ JAVASCRIPT KHÔNG GIỮ NỔI TỪNG ĐỒNG. Gõ
+    // "9007199254740993" mà `Number()` trả về "…992" — lệch một đồng, im lặng,
+    // rồi con số sai ấy đi thẳng vào hóa đơn thuế. Thà TỪ CHỐI còn hơn lưu một
+    // số khác số người dùng gõ; mà số tiền cỡ ấy thì chắc chắn là gõ nhầm.
+    if (so > Number.MAX_SAFE_INTEGER) return null;
     return so;
 }
 

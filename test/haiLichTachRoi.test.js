@@ -444,11 +444,30 @@ test('⭐ kêu lên khi tắt cả hai cột', () => {
         'khách có tên trong lịch mà không chạy lượt nào — cũng là hỏng im lặng');
 });
 
-test('⭐ gõ vào ô giờ tự chọn thì lời nhắc tính lại ngay', () => {
-    const v = doc(CC);
-    const t = v.slice(v.indexOf("oKhach.addEventListener('input'"));
-    assert.match(t.slice(0, 700), /hdt-gio-tien/,
-        'cảnh báo "chưa điền giờ" không bao giờ tắt dù người dùng đã điền');
+// ⚠️ BÀI NÀY TRƯỚC ĐÂY CẮT 700 KÝ TỰ ĐẦU CỦA HÀM NGHE rồi tìm chuỗi. Thêm một
+// khối mã vào hàm ấy là chuỗi bị đẩy ra ngoài 700 -> đỏ vì lý do chẳng liên quan
+// gì tới điều nó hứa. Đã dính đúng thế 28/08/2026 khi thêm phần chấm ngăn nghìn.
+// Nay bấm thật: gõ giờ vào rồi xem cảnh báo có tắt không.
+test('⭐⭐ gõ vào ô giờ tự chọn thì cảnh báo "chưa điền giờ" TẮT ngay', async () => {
+    const { tailieu } = await moBang(CAI_DAT_MAU);
+    const ds = tailieu.getElementById('hdt-hen-ds-khach');
+    const o = ds.querySelector('input.hdt-tick-hen');
+    const ma = o.dataset.ma;
+    o.checked = true;
+    ds.querySelector('input.hdt-bat-tc[data-ma="' + ma + '"]').checked = true;
+    const oTien = ds.querySelector('input.hdt-tien-ngay[data-ma="' + ma + '"]');
+    oTien.value = '5000000';
+    oTien.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await nhip();
+    const ghi = tailieu.getElementById('hdt-hen-khach');
+    assert.match(ghi.textContent, /CHƯA ĐIỀN GIỜ/, 'chưa điền giờ mà không kêu');
+
+    const oGio = ds.querySelector('input.hdt-gio-tien[data-ma="' + ma + '"]');
+    oGio.value = '10:30';
+    oGio.dispatchEvent(new tailieu.defaultView.Event('input', { bubbles: true }));
+    await nhip();
+    assert.ok(!/CHƯA ĐIỀN GIỜ/.test(ghi.textContent),
+        'điền giờ rồi mà cảnh báo không tắt: ' + ghi.textContent);
 });
 
 test('lời dẫn nói rõ luật một-lần-mỗi-ngày CHỈ áp cho lượt hệ thống', () => {

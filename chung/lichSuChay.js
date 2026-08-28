@@ -87,6 +87,11 @@ function taoBanGhi(d = {}) {
             // thì đường ấy không biết đây là tờ tự chọn hay theo hệ thống, và
             // Sell xếp nhầm cột.
             soTienDat: Number(l.soTienDat) || 0,
+            // ⚠️ CỜ NGÀY CUỐI của hạn "tiền/ngày". Bản ghi là nguồn DUY NHẤT của
+            // đường "gửi lại ở cuối loạt" — lưới an toàn khi loạt bị ngắt giữa
+            // chừng. Đánh rơi ở đây thì tin nhắn "từ mai không xuất nữa" mất
+            // đúng vào lúc cần nhất, và hôm sau máy dừng trong im lặng.
+            ...(l.ngayCuoiTuChon ? { ngayCuoiTuChon: true } : {}),
             ket: r.daBamThanhToan ? KET.RA_HOA_DON : KET.VAO_GIO,
             tongTendoo: r.tong == null ? null : Number(r.tong),
             lech: r.lech == null ? null : Number(r.lech),
@@ -101,6 +106,7 @@ function taoBanGhi(d = {}) {
             maLenh: chuoi(l.id),
             tenKH: chuoi(l.tenKH), soTien: Number(l.soTien) || 0,
             soTienDat: Number(l.soTienDat) || 0,
+            ...(l.ngayCuoiTuChon ? { ngayCuoiTuChon: true } : {}),
             ket: KET.LOI, maLoi: chuoi(l.maLoi), chiTiet: chuoi(l.thongBao),
         });
     }
@@ -112,6 +118,7 @@ function taoBanGhi(d = {}) {
             maLenh: chuoi(l.id),
             tenKH: chuoi(l.tenKH), soTien: Number(l.soTien) || 0,
             soTienDat: Number(l.soTienDat) || 0,
+            ...(l.ngayCuoiTuChon ? { ngayCuoiTuChon: true } : {}),
             ket: KET.TREO, chiTiet: chuoi(l.thongBao),
         });
     }

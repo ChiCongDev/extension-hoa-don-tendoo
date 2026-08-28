@@ -98,14 +98,33 @@ function chuanSoTienNgay(v) {
 }
 
 /**
+ * SỐ NGÀY lượt tự chọn được phép chạy. Không hợp lệ / để trống -> null (chạy mãi).
+ *
+ * ⚠️ Cố tình KHÔNG nhận dấu nhóm nghìn: đây là số ngày, "1.000 ngày" là gõ nhầm
+ * chứ không phải ý thật. Trần 3650 (mười năm) để một cú gõ thừa số 0 không biến
+ * thành cái hạn không bao giờ tới.
+ */
+function chuanSoNgay(v) {
+    if (v == null || v === '') return null;
+    const chu = String(v).trim();
+    if (!/^\d+$/.test(chu)) return null;
+    const so = Number(chu);
+    if (!Number.isInteger(so) || so <= 0 || so > 3650) return null;
+    return so;
+}
+
+/**
  * Danh sách khách của lịch hẹn: mã, tên, MỐC GIỜ RIÊNG và SỐ TIỀN MỖI NGÀY
  * (cả hai đều tùy chọn).
  *
  * ⚠️ Khách có `moc` riêng thì GIỜ CHUNG KHÔNG đụng tới nữa (xem henGio.gomTheoMoc).
  * Bỏ trùng theo mã, giữ nguyên thứ tự.
  */
-function chuanKhach(ds, HenGio) {
+function chuanKhach(ds, HenGio, gioChung, khachCu) {
     if (!Array.isArray(ds)) return [];
+    // Bản ĐANG LƯU, để biết hạn tự chọn của khách đã bắt đầu từ hôm nào.
+    const cuTheoMa = new Map((Array.isArray(khachCu) ? khachCu : [])
+        .map(x => [String((x && x.maKH) || '').trim(), x || {}]));
     const thay = new Set();
     const ra = [];
     for (const k of ds) {
@@ -125,6 +144,76 @@ function chuanKhach(ds, HenGio) {
         // đem nó đi xuất hóa đơn thuế.
         const soTien = chuanSoTienNgay(k && k.soTienNgay);
         if (soTien != null) o.soTienNgay = soTien;
+
+        // ── HAI LỊCH TÁCH RỜI — chủ dự án chốt 27/08/2026 ───────────────────
+        //
+        //   · hệ thống  — xuất theo DOANH THU hôm nay, giờ ở `moc`
+        //   · tự chọn   — xuất đúng `soTienNgay`, giờ ở `mocTien`
+        //
+        // Hai lịch KHÔNG liên quan gì nhau: một khách có thể ra HAI hóa đơn
+        // trong ngày, mỗi cái một giờ.
+        //
+        // ⚠️ VÌ SAO CHUYỆN NÀY KHÔNG PHÁ LUẬT "MỖI NGÀY ĐÚNG MỘT MỐC"
+        // (henGio.js, chốt 13/08/2026): luật ấy sinh ra vì lượt HỆ THỐNG lấy
+        // "doanh thu hôm nay tính tới lúc chạy", chạy hai lần là tính trùng
+        // phần buổi sáng. Lượt TỰ CHỌN không đọc doanh thu, không có gì để
+        // tính trùng. Nên vẫn ĐÚNG MỘT lượt hệ thống mỗi ngày, cộng thêm lượt
+        // tự chọn độc lập.
+        const mocTien = HenGio ? HenGio.chuanMotMoc(k && k.mocTien) : null;
+        if (mocTien) o.mocTien = mocTien;
+
+        // ⚠️ CHUYỂN CÀI ĐẶT CŨ SANG KIỂU MỚI — chỗ này quyết định hóa đơn THẬT.
+        // Bản ghi cũ không có hai cờ này. Nếp cũ: có `soTienNgay` thì con số ấy
+        // THAY HẲN doanh thu, và khách ra ĐÚNG MỘT tờ tại `moc`. Nên chuyển
+        // sang: bật tự chọn, TẮT hệ thống, giờ tự chọn lấy chính `moc` cũ.
+        //
+        // Bật cả hai ở đây là PHÁT HÀNH THÊM HÓA ĐƠN THUẾ mà người dùng chưa
+        // bao giờ yêu cầu, và hóa đơn đã gửi cơ quan thuế thì không rút lại
+        // được. Thà giữ nguyên như hôm qua rồi để họ tự bật.
+        const cu = !('batHeThong' in (k || {})) && !('batTuChon' in (k || {}));
+        if (cu) {
+            if (o.soTienNgay) {
+                o.batHeThong = false;
+                o.batTuChon = true;
+                    // ⚠️ KHÔNG CÓ GIỜ RIÊNG THÌ KẾ THỪA GIỜ CHUNG. Nếp cũ: khách
+                // để trống ô giờ vẫn chạy — theo giờ chung. Bỏ trống `mocTien`
+                // ở đây là lượt tự chọn NGỪNG CHẠY HẲN từ mai, và người dùng
+                // chỉ biết khi tối ngồi đếm thiếu một tờ hóa đơn.
+                if (!o.mocTien) o.mocTien = o.moc || gioChung || '';
+                if (!o.mocTien) delete o.mocTien;
+            } else {
+                o.batHeThong = true;
+                o.batTuChon = false;
+            }
+        } else {
+            o.batHeThong = !!(k && k.batHeThong);
+            o.batTuChon = !!(k && k.batTuChon);
+        }
+
+        // ── HẠN CHẠY CỦA LƯỢT TỰ CHỌN — chủ dự án chốt 27/08/2026 ───────────
+        //
+        // Lưu HAI con số đứng yên (số ngày + ngày bắt đầu), KHÔNG lưu số đếm
+        // lùi. `henGio.ngayHetHanTuChon` tính lại mỗi lần từ hai con số ấy.
+        // Xem chú thích dài ở đó: số đếm lùi phải trừ đúng một lần mỗi ngày,
+        // mà Chrome giết tiến trình nền giữa chừng là chuyện thường.
+        const soNgay = chuanSoNgay(k && k.soNgayTuChon);
+        if (soNgay != null && o.batTuChon) {
+            o.soNgayTuChon = soNgay;
+            // ⚠️ MỐC BẮT ĐẦU CHỈ ĐẶT LẠI KHI SỐ NGÀY ĐỔI. Nếu mỗi lần bấm Lưu
+            // mà mốc nhảy về hôm nay thì hạn "7 ngày" chạy MÃI MÃI: người dùng
+            // sửa giờ của khách khác, bấm Lưu, thế là gia hạn cả bảng mà không
+            // ai hay.
+            //
+            // So với BẢN ĐANG LƯU (`cu`), không so với thứ màn hình gửi lên —
+            // màn hình không gửi mốc bắt đầu, và bắt nó gửi là đặt một luật
+            // quan trọng vào chỗ không bài kiểm nào với tới.
+            const truoc = cuTheoMa.get(ma) || {};
+            const batDauCu = String(truoc.batDauTuChon || '').trim();
+            const giuMoc = Number(truoc.soNgayTuChon) === soNgay
+                && /^\d{4}-\d{2}-\d{2}$/.test(batDauCu);
+            const batDau = giuMoc ? batDauCu : (HenGio ? HenGio.ngayVN() : '');
+            if (batDau) o.batDauTuChon = batDau;
+        }
         ra.push(o);
     }
     return ra;
@@ -206,14 +295,20 @@ function gop(cu, tin, HenGio) {
         c.henGio = {
             bat: 'bat' in h ? !!h.bat : !!cuH.bat,
             moc,
-            khach: 'khach' in h ? chuanKhach(h.khach, HenGio) : (cuH.khach || []),
+            khach: 'khach' in h
+                ? chuanKhach(h.khach, HenGio, moc[0], cuH.khach)
+                : (cuH.khach || []),
             urlBang: 'urlBang' in h ? String(h.urlBang || '') : String(cuH.urlBang || ''),
         };
         // Bật lịch mà không có khách, hoặc không có MỐC NÀO (kể cả giờ riêng của
         // khách), thì lịch vô nghĩa — để nguyên "bật" chỉ làm người dùng tưởng
         // máy sẽ chạy. Tắt thẳng.
+        // ⚠️ PHẢI ĐẾM CẢ GIỜ TIỀN/NGÀY. Bản 27/08 chỉ nhìn `k.moc` (giờ của lượt
+        // hệ thống), nên khách chỉ đặt giờ tiền/ngày mà không có giờ chung là
+        // bấm Lưu một cái LỊCH TỰ TẮT — không chạy gì, không báo gì, người dùng
+        // chỉ biết khi tối ngồi đếm không thấy tờ nào.
         const coMocNaoDo = c.henGio.moc.length > 0
-            || c.henGio.khach.some(k => k.moc);
+            || c.henGio.khach.some(k => k.moc || (k.batTuChon && k.mocTien));
         if (c.henGio.bat && (!coMocNaoDo || !c.henGio.khach.length)) {
             c.henGio.bat = false;
         }
@@ -231,8 +326,12 @@ function tuKho(o, docDuoc) {
     c.henGio = {
         bat: !!h.bat,
         moc: Array.isArray(h.moc) ? h.moc.slice() : [],
-        khach: chuanKhach(h.khach, (typeof globalThis !== 'undefined' && globalThis.HDT_HenGio)
-                                   || null),
+        // ⚠️ Đọc từ kho thì bản "cũ" CHÍNH LÀ nó: mốc bắt đầu đã lưu phải được
+        // giữ nguyên, không được đặt lại thành hôm nay mỗi lần khởi động.
+        khach: chuanKhach(h.khach,
+                          (typeof globalThis !== 'undefined' && globalThis.HDT_HenGio) || null,
+                          (Array.isArray(h.moc) ? h.moc : [])[0],
+                          h.khach),
         urlBang: String(h.urlBang || ''),
     };
     c.daHieu = !!(c.tuBam && c.daHieu);
@@ -249,7 +348,7 @@ const khiDocHong = () => tuKho(null, false);
 
 const API = { chuanSoTienNgay, MAC_DINH, DUNG_SAI_MAC_DINH, DUNG_SAI_DANG_LO,
               TRAN_MOI_HOA_DON_MAC_DINH,
-              chuanDungSai, chuanTranMoiHoaDon, chuanKhach, chuanChatId,
+              chuanDungSai, chuanTranMoiHoaDon, chuanKhach, chuanChatId, chuanSoNgay,
               gop, tuKho, khiDocHong };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_CaiDat = API;

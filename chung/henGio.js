@@ -17,6 +17,117 @@
 const TIEN_TO = 'hdt-hen-';
 const MOT_NGAY_PHUT = 24 * 60;
 
+// ── NGÀY THEO GIỜ VIỆT NAM ──────────────────────────────────────────────────
+//
+// ⚠️ KHÔNG DÙNG GIỜ MÁY, cùng lý do đã ghi ở baoTelegram.js: máy chạy lúc không
+// có ai ngồi xem, và máy đặt sai múi giờ hay đang ở nơi khác thì "hôm nay" lệch
+// một ngày. Ở đây "hôm nay" quyết định một khách CÒN được xuất hóa đơn thuế hay
+// không, nên lệch một ngày là xuất thừa hoặc thiếu một tờ.
+const MUI_GIO = 'Asia/Ho_Chi_Minh';
+
+/** Mốc thời gian -> "YYYY-MM-DD" theo giờ Việt Nam. */
+function ngayVN(luc) {
+    const t = new Date(Number(luc) || Date.now());
+    if (Number.isNaN(t.getTime())) return '';
+    try {
+        const p = new Intl.DateTimeFormat('en-GB', {
+            timeZone: MUI_GIO, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(t).reduce((o, x) => (o[x.type] = x.value, o), {});
+        return `${p.year}-${p.month}-${p.day}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+/** "YYYY-MM-DD" + n ngày -> "YYYY-MM-DD". Không đúng dạng -> ''. */
+function congNgay(iso, n) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+    if (!m) return '';
+    // Dùng UTC để cộng ngày: không có giờ mùa hè, không nhảy múi.
+    const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(t + (Number(n) || 0) * 24 * 3600 * 1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-`
+        + `${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * NGÀY CUỐI CÙNG lượt tự chọn của khách này còn được chạy. '' = không đặt hạn.
+ *
+ * ⚠️ TÍNH LẠI MỖI LẦN TỪ (ngày bắt đầu + số ngày), KHÔNG giữ số đếm lùi. Số đếm
+ * lùi phải trừ đúng một lần mỗi ngày, mà Chrome giết tiến trình nền giữa chừng
+ * là chuyện thường: trừ hai lần thì mất ngày, trừ hụt thì chạy dai. Hai con số
+ * đứng yên thì không có gì để hỏng.
+ *
+ * Ngày bắt đầu TÍNH LUÔN: đặt 1 ngày nghĩa là chỉ chạy đúng hôm đó.
+ */
+function ngayHetHanTuChon(k) {
+    const so = Number(k && k.soNgayTuChon);
+    const batDau = String((k && k.batDauTuChon) || '').trim();
+    if (!Number.isFinite(so) || so <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(batDau)) return '';
+    return congNgay(batDau, so - 1);
+}
+
+/** Lượt tự chọn của khách này đã hết hạn tính tới ngày `homNay` chưa. */
+function hetHanTuChon(k, homNay) {
+    const het = ngayHetHanTuChon(k);
+    if (!het) return false;                 // không đặt hạn -> chạy mãi
+    return String(homNay || ngayVN()) > het;
+}
+
+/** Hôm nay có phải NGÀY CUỐI của khách này không (để báo trước khi dừng). */
+function laNgayCuoiTuChon(k, homNay) {
+    const het = ngayHetHanTuChon(k);
+    return !!het && String(homNay || ngayVN()) === het;
+}
+
+/** Còn bao nhiêu ngày nữa (kể cả hôm nay). Không đặt hạn -> null. */
+function soNgayConLai(k, homNay) {
+    const het = ngayHetHanTuChon(k);
+    if (!het) return null;
+    const nay = String(homNay || ngayVN());
+    if (nay > het) return 0;
+    let n = 0;
+    for (let d = nay; d <= het && n < 4000; d = congNgay(d, 1)) n++;
+    return n;
+}
+
+/**
+ * KHÁCH NÀY HÔM NAY ĐÃ CHẠY LƯỢT TIỀN/NGÀY CHƯA — đọc từ lịch sử chạy.
+ *
+ * ⚠️ "ĐÃ CHẠY" KHÔNG PHẢI "ĐÃ RA HÓA ĐƠN" — chủ dự án chốt 27/08/2026. Lượt
+ * chạy rồi mà hỏng thì NGÀY ẤY VẪN TIÊU: báo thức hôm nay không kêu lại nữa, và
+ * ngày dừng đã tính sẵn từ ngày bắt đầu nên không đổi. Chỉ đếm lần ra hóa đơn
+ * thì có hôm con số đứng yên trong khi ngày dừng vẫn tiến — hai thứ trên cùng
+ * một màn hình nói hai điều khác nhau.
+ *
+ * Nhận ra lượt tự chọn bằng `soTienDat > 0`: đó là dấu duy nhất phân biệt nó
+ * với lượt theo doanh thu, và nó đi theo bản ghi từ `apDungSoDat` tới đây.
+ */
+function daChayTuChonHomNay(maKH, lichSu, homNay) {
+    const ma = String(maKH || '').trim();
+    if (!ma) return false;
+    const nay = String(homNay || ngayVN());
+    return (Array.isArray(lichSu) ? lichSu : []).some((b) => {
+        if (!b || ngayVN(b.luc) !== nay) return false;
+        return (b.khach || []).some(
+            k => k && String(k.maKH || '').trim() === ma && Number(k.soTienDat) > 0);
+    });
+}
+
+/**
+ * SỐ NGÀY CÒN CHẠY ĐƯỢC KỂ TỪ BÂY GIỜ — con số bảng cài đặt bày ra.
+ *
+ * Khác `soNgayConLai` đúng một điểm: hôm nay ĐÃ chạy rồi thì không tính nữa.
+ * Chủ dự án chốt 27/08/2026 — xuất xong mà con số đứng yên tới nửa đêm thì nhìn
+ * như máy không ghi nhận gì.
+ */
+function soNgayChayTiep(k, lichSu, homNay) {
+    const con = soNgayConLai(k, homNay);
+    if (con == null) return null;
+    if (con <= 0) return 0;
+    return daChayTuChonHomNay(k && k.maKH, lichSu, homNay) ? con - 1 : con;
+}
+
 /** "9:5" -> "09:05". Không phải giờ hợp lệ -> null. */
 function chuanMotMoc(v) {
     const s = String(v == null ? '' : v).trim();
@@ -102,25 +213,64 @@ function lanKeTiep(moc, bayGio, taoNgay) {
  * chứ không dựng hai báo thức: hai lượt sát nhau thì lượt sau đụng khóa chống
  * chạy chồng và bị bỏ qua.
  *
+ * ── HAI LỊCH TÁCH RỜI (chủ dự án chốt 27/08/2026) ──────────────────────────
+ * Mỗi khách sinh ra TỐI ĐA HAI mục, mỗi mục mang cờ `kieu`:
+ *   · 'he_thong' — bật bằng `batHeThong`, giờ `moc` (trống -> giờ chung)
+ *   · 'tu_chon'  — bật bằng `batTuChon`, giờ `mocTien`, tiền `soTienNgay`
+ *
+ * ⚠️ KHÓA BỎ TRÙNG PHẢI LÀ (mã khách + kiểu), KHÔNG PHẢI mã khách. Bản cũ bỏ
+ * trùng theo mã: đặt giờ hệ thống 10:00 và giờ tự chọn 10:00 cho cùng một khách
+ * thì một trong hai BIẾN MẤT, không báo gì, và người dùng chỉ biết khi tối ngồi
+ * đếm thiếu một tờ hóa đơn.
+ *
+ * ⚠️ `tu_chon` PHẢI CÓ GIỜ RIÊNG mới chạy — chủ dự án chốt: gõ tiền mà quên gõ
+ * giờ thì KHÔNG chạy phần ấy. Không mượn giờ chung, không mượn giờ hệ thống:
+ * mượn ngầm là ra một tờ hóa đơn thuế vào giờ người dùng không hề chọn.
+ *
  * @returns {Array<{moc:string, khach:Array, laGioChung:boolean}>} sắp theo giờ
  */
-function gomTheoMoc(henGio) {
+function gomTheoMoc(henGio, homNay) {
     const h = henGio || {};
+    const nay = String(homNay || ngayVN());
     const gioChung = chuanMoc(h.moc)[0] || null;
     const theoMoc = new Map();
 
-    const them = (moc, k, laChung) => {
+    const them = (moc, k, laChung, kieu) => {
         if (!moc) return;
         if (!theoMoc.has(moc)) theoMoc.set(moc, { moc, khach: [], laGioChung: false });
         const o = theoMoc.get(moc);
         if (laChung) o.laGioChung = true;
-        if (!o.khach.some(x => x.maKH === k.maKH)) o.khach.push(k);
+        if (!o.khach.some(x => x.maKH === k.maKH && (x.kieu || 'he_thong') === kieu)) {
+            o.khach.push({ ...k, kieu });
+        }
     };
 
     for (const k of h.khach || []) {
-        const rieng = chuanMotMoc(k.moc);
-        if (rieng) them(rieng, k, false);
-        else them(gioChung, k, true);
+        // Bản ghi cũ (chưa có hai cờ) coi như BẬT hệ thống. `caiDat.chuanKhach`
+        // đã chuyển hết sang cờ rồi; đây là lưới đỡ cho gói dựng tay.
+        const coCo = ('batHeThong' in k) || ('batTuChon' in k);
+        const batHT = coCo ? !!k.batHeThong : true;
+        const batTC = coCo ? !!k.batTuChon : false;
+
+        if (batHT) {
+            const rieng = chuanMotMoc(k.moc);
+            if (rieng) them(rieng, k, false, 'he_thong');
+            else them(gioChung, k, true, 'he_thong');
+        }
+        // ⚠️ HẾT HẠN THÌ KHÔNG DỰNG MỐC NỮA — chủ dự án chốt 27/08/2026. Ô tích
+        // vẫn để nguyên (bảng cài đặt sẽ ghi "đã hết hạn"); tiến trình nền KHÔNG
+        // tự sửa cài đặt của người dùng. Lọc ở đây là đủ: không có mục thì
+        // `dungLich` không dựng báo thức, và `khachCuaMoc` cũng không trả về.
+        if (batTC && !hetHanTuChon(k, nay)) {
+            // Không có giờ -> KHÔNG chạy. Cố ý; xem chú thích đầu hàm.
+            const mocT = chuanMotMoc(k.mocTien);
+            // ⚠️ ĐÓNG DẤU NGÀY CUỐI ngay tại đây, chỗ DUY NHẤT biết cả khách
+            // lẫn "hôm nay". Báo Telegram phải nhắn ở LƯỢT CHẠY CUỐI ("từ mai
+            // không xuất nữa") chứ không phải hôm sau — hôm sau mốc này không
+            // còn báo thức nào để đánh thức máy dậy mà nhắn.
+            if (mocT) them(mocT, laNgayCuoiTuChon(k, nay) ? { ...k, ngayCuoi: true } : k,
+                           false, 'tu_chon');
+        }
     }
     // Giờ chung có đặt nhưng không còn khách nào theo nó thì vẫn giữ mốc lại,
     // để màn hình nói được "mốc này không còn khách nào" thay vì im lặng.
@@ -131,17 +281,41 @@ function gomTheoMoc(henGio) {
 }
 
 /** Những khách sẽ chạy vào ĐÚNG mốc này. */
-function khachCuaMoc(henGio, moc) {
+function khachCuaMoc(henGio, moc, homNay) {
     const m = chuanMotMoc(moc);
-    const o = gomTheoMoc(henGio).find(x => x.moc === m);
+    const o = gomTheoMoc(henGio, homNay).find(x => x.moc === m);
     return o ? o.khach : [];
+}
+
+/** Khách BẬT tự chọn nhưng đã HẾT HẠN — để bảng cài đặt nói ra. */
+function khachHetHanTuChon(henGio, homNay) {
+    return ((henGio || {}).khach || []).filter(
+        k => k && k.batTuChon && hetHanTuChon(k, homNay));
 }
 
 /** Khách nằm trong lịch nhưng KHÔNG có giờ nào để chạy (chưa đặt giờ chung). */
 function khachKhongCoGio(henGio) {
     const h = henGio || {};
     if (chuanMoc(h.moc)[0]) return [];
-    return (h.khach || []).filter(k => !chuanMotMoc(k.moc));
+    return (h.khach || []).filter((k) => {
+        const coCo = ('batHeThong' in k) || ('batTuChon' in k);
+        const batHT = coCo ? !!k.batHeThong : true;
+        // Khách chỉ bật tự chọn thì giờ chung không liên quan gì tới họ.
+        if (!batHT) return false;
+        return !chuanMotMoc(k.moc);
+    });
+}
+
+/**
+ * Khách BẬT tự chọn, ĐÃ gõ tiền, nhưng CHƯA gõ giờ -> phần ấy KHÔNG chạy.
+ *
+ * ⚠️ Phải bày ra màn hình. Người dùng gõ "5.000.000" vào ô tiền rồi bấm Lưu, và
+ * mọi thứ trông như đã xong — trong khi phần ấy sẽ không bao giờ chạy. Đây là
+ * đúng kiểu hỏng im lặng mà cả dự án này đang tránh.
+ */
+function khachThieuGioTien(henGio) {
+    return ((henGio || {}).khach || []).filter(
+        k => k && k.batTuChon && !chuanMotMoc(k.mocTien));
 }
 
 /**
@@ -339,7 +513,12 @@ function ghepVoiBang(khachTrongLich, cacDongBang, bangTinCay = true) {
         const d = theoMa.get(String(k.maKH));
         const tien = d ? Number(d.doanhThu) : null;
         if (d && tien > 0) {
-            chay.push({ maKH: d.maKH, tenKH: d.tenKH || k.tenKH, soTien: tien });
+            // ⚠️ MANG CỜ `kieu` SANG. Một mốc có thể chứa cả mục hệ thống lẫn
+            // mục tự chọn của CÙNG một khách (người dùng đặt hai giờ trùng
+            // nhau). Không mang cờ thì `apDungSoDat` chỉ còn mã khách để phân
+            // biệt, và nó vứt mất mục hệ thống.
+            chay.push({ maKH: d.maKH, tenKH: d.tenKH || k.tenKH, soTien: tien,
+                        ...(k.kieu ? { kieu: k.kieu } : {}) });
             continue;
         }
         let lyDo;
@@ -347,14 +526,19 @@ function ghepVoiBang(khachTrongLich, cacDongBang, bangTinCay = true) {
         else if (tien === 0) lyDo = 'doanh thu bằng 0 — mua rồi trả hết trong ngày';
         else if (tien < 0) lyDo = `doanh thu âm (${tien}) — trả hàng nhiều hơn bán`;
         else lyDo = 'không đọc được doanh thu';
-        thieu.push({ maKH: k.maKH, tenKH: k.tenKH, lyDo });
+        thieu.push({ maKH: k.maKH, tenKH: k.tenKH, lyDo,
+                     ...(k.kieu ? { kieu: k.kieu } : {}) });
     }
     return { chay, thieu, tinCay: true, thongBao: '' };
 }
 
 const API = { TIEN_TO, chuanMotMoc, chuanMoc, chuanMocKeRo, chuanMocThoDai,
               tenBaoThuc, mocTuTen, lanKeTiep, dungLich, duocChay, ghepVoiBang,
-              kiemSanSang, gomTheoMoc, khachCuaMoc, khachKhongCoGio, mocQuaSat, LY_DO };
+              kiemSanSang, gomTheoMoc, khachCuaMoc, khachKhongCoGio,
+              khachThieuGioTien, khachHetHanTuChon, mocQuaSat, LY_DO,
+              ngayVN, congNgay, ngayHetHanTuChon, hetHanTuChon,
+              laNgayCuoiTuChon, soNgayConLai, daChayTuChonHomNay, soNgayChayTiep,
+              MUI_GIO };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_HenGio = API;
 

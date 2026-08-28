@@ -522,12 +522,17 @@ async function chayTheoHen(moc) {
         return;
     }
 
-    // ⚠️ ĐỌC BẰNG TOKEN TRƯỚC — chạy được cả khi KHÔNG đăng nhập Sell. Khai
-    // token rồi thì KHÔNG bao giờ đụng tới trang báo cáo nữa, nên đăng nhập hay
-    // đăng xuất cũng ra cùng một con số.
-    let bang = await docSoQuaToken(c);
+    // ── MỐC THUẦN "TỰ CHỌN" KHÔNG CẦN BẢNG DOANH THU ────────────────────────
+    //
+    // ⚠️ Từ 27/08/2026 hai lịch tách rời, và lượt tự chọn xuất đúng con số người
+    // dùng gõ — KHÔNG đọc một ô nào của bảng. Bắt nó đi qua cửa "đọc được bảng
+    // chưa" là để một trang báo cáo hỏng giết chết một lượt hóa đơn hoàn toàn
+    // không liên quan. Mốc nào chỉ toàn mục tự chọn thì đi thẳng.
+    const thuanTuChon = self.HDT_ApDungSoDat.mocThuanTuChon(trongLich);
+
+    let bang = thuanTuChon ? null : await docSoQuaToken(c);
     let tab = null;
-    if (!bang) {
+    if (!bang && !thuanTuChon) {
         // Chưa khai token — lối phụ: đọc bảng trên trang báo cáo như trước.
         tab = await timHoacMoTabBang(c.henGio.urlBang);
         if (!tab) {
@@ -544,7 +549,8 @@ async function chayTheoHen(moc) {
         // 2026-08-13: hẹn giờ chỉ lấy số của đúng ngày hôm đó.
         bang = await guiTab(tab.id, { loai: 'hdt-doc-bang', epHomNay: true });
     }
-    const tinCay = !!(bang && bang.ok && bang.tinCay && Array.isArray(bang.dong));
+    const tinCay = thuanTuChon
+        || !!(bang && bang.ok && bang.tinCay && Array.isArray(bang.dong));
     if (!tinCay) {
         dongTabNeuTuMo(tab);
         // KHÔNG được kết luận "hôm nay cả lịch đều im" ở đây: bảng chưa chắc đúng
@@ -559,7 +565,23 @@ async function chayTheoHen(moc) {
         return;
     }
 
-    const ghep = self.HDT_HenGio.ghepVoiBang(trongLich, bang.dong, true);
+    // Mốc thuần tự chọn: không có bảng, và cũng không cần — `apDung` dưới đây
+    // dựng danh sách chạy từ chính con số đã đặt.
+    const ghep = thuanTuChon
+        ? { chay: [], thieu: [], tinCay: true, thongBao: '' }
+        : self.HDT_HenGio.ghepVoiBang(trongLich, bang.dong, true);
+
+    // ⚠️⚠️ `bang` LÀ null Ở MỐC THUẦN TỰ CHỌN. Mọi chỗ dưới đây đụng tới ngày
+    // đều PHẢI đi qua biến này, không được `bang.ngay` thẳng.
+    //
+    // Đây là lỗi có thật, đã chặn đúng một lượt của chủ dự án ngày 27/08/2026:
+    // mốc 15:05 chỉ có mục tiền/ngày -> `bang = null` -> `bang.ngay` ném
+    // TypeError -> cả lượt chết, không phát hành gì. Test không bắt được vì
+    // tiến trình nền là service worker, không nạp thẳng vào node được.
+    //
+    // Thiếu ngày KHÔNG sao: lượt tự chọn không dùng ngày để tính tiền, và
+    // `dayVeSell.dongTuTienDo` tự lùi về ngày máy khi không được truyền.
+    const ngaySL = (bang && bang.ngay) || null;
     let dsChay = ghep.chay;
     let thieu = ghep.thieu;
 
@@ -591,8 +613,9 @@ async function chayTheoHen(moc) {
             .map(x => `${x.tenKH || x.maKH}: ${x.lyDo}`)
             .slice(0, 6);
         await ghiKetQuaVaLichSu({
-            moc, chay: false, lyDo: 'KHONG_KHACH_NAO_PHAT_SINH', thieu, ngay: bang.ngay,
-            thongBao: `Hôm nay (${bang.ngay.tu}) không khách nào trong lịch chạy được. `
+            moc, chay: false, lyDo: 'KHONG_KHACH_NAO_PHAT_SINH', thieu, ngay: ngaySL,
+            thongBao: `Hôm nay (${(ngaySL && ngaySL.tu) || 'không rõ ngày'}) `
+                + 'không khách nào trong lịch chạy được. '
                 + (keLyDo.length ? 'Lý do từng khách — ' + keLyDo.join('; ') + '. '
                                  : 'Không khách nào phát sinh doanh thu. ')
                 + 'Lịch giữ nguyên, mai chạy tiếp.',
@@ -602,7 +625,7 @@ async function chayTheoHen(moc) {
 
     const cn = await dungCauNoi();
     // Gửi sang Sell NGAY sau mỗi khách, không đợi hết loạt.
-    const tra = await cn.taoHoaDon(dsChay, taoMocDaySell(bang.ngay && bang.ngay.tu));
+    const tra = await cn.taoHoaDon(dsChay, taoMocDaySell(ngaySL && ngaySL.tu));
     // ⚠️ KHÔNG được đóng đinh `chay: true`. Cầu nối có năm đường bỏ cuộc ở TẦNG
     // LƯỢT (đang chạy dở, không có tab, tab chưa sẵn sàng, giao diện lạ, giỏ còn
     // hàng) — cả năm đều trả về TRƯỚC khi đụng tới khách nào. Khai là "đã chạy"
@@ -610,7 +633,7 @@ async function chayTheoHen(moc) {
     await ghiKetQuaVaLichSu({
         moc, chay: self.HDT_LichSuChay.daChay(tra),
         lyDo: (tra && tra.ly_do) || '', thongBao: (tra && tra.thongBao) || '',
-        thieu, ngay: bang.ngay, soKhach: dsChay.length, ketQua: tra,
+        thieu, ngay: ngaySL, soKhach: dsChay.length, ketQua: tra,
     }, trongLich);
     dongTabNeuTuMo(tab);
 }

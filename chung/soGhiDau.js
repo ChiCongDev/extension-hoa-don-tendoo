@@ -97,7 +97,7 @@ function taoSo(luuTru, tuyChon = {}) {
         return so.lenh.some(l => l.trangThai === TRANG_THAI.TREO);
     }
 
-    async function taoLenh({ maKH, tenKH, soTien, soTienDat }) {
+    async function taoLenh({ maKH, tenKH, soTien, soTienDat, ngayCuoiTuChon }) {
         batBuocNap();
         const ma = String(maKH || '').trim();
         if (!ma) throw new Error('Thiếu mã khách hàng');
@@ -115,6 +115,14 @@ function taoSo(luuTru, tuyChon = {}) {
             // đây thì cả hai đường đẩy về Sell đều mất dấu và Sell xếp nhầm cột.
             // Không đặt thì KHÔNG thêm khoá — sổ cũ đọc lên vẫn y nguyên.
             ...(Number(soTienDat) > 0 ? { soTienDat: Math.round(Number(soTienDat)) } : {}),
+            // ⚠️ HÔM NAY LÀ NGÀY CUỐI của hạn "tiền/ngày" — cùng lý do với dòng
+            // ngay trên: đây là chỗ hẹp DUY NHẤT mọi lệnh đi qua. Quên ở đây thì
+            // tin nhắn "từ mai không xuất nữa" KHÔNG BAO GIỜ gửi được, và hôm
+            // sau máy dừng trong im lặng.
+            //
+            // Đã hỏng thật một lần: bài kiểm tự tay gắn cờ vào lệnh nên xanh,
+            // trong khi đường chạy thật rơi mất cờ ngay tại đây.
+            ...(ngayCuoiTuChon ? { ngayCuoiTuChon: true } : {}),
             trangThai: TRANG_THAI.CHO,
             taoLuc: dongHo(),
         };

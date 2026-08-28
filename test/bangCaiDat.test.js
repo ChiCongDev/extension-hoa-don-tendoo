@@ -965,4 +965,56 @@ test('⭐ đổi trang KHÔNG đụng tới các khối khác của bảng cài 
     assert.ok(tailieu.getElementById('hdt-hen-ds-khach'), 'đổi trang làm mất khối chọn khách');
 });
 
+ghiChu('— Bố cục: đủ rộng để đọc, chủ dự án chốt 28/08/2026 —');
+
+test('⭐⭐ KHÔNG được có dấu huyền ngược trong khối CSS', () => {
+    // ⚠️ Khối CSS nằm trong một template literal. Một dấu huyền ngược lọt vào
+    // chú thích là CẮT ĐỨT chuỗi ngay đó: phần CSS còn lại biến thành mã, và
+    // `node --check` VẪN XANH vì thứ sinh ra vẫn đúng cú pháp. Chỉ tới lúc chạy
+    // mới nổ "hop is not defined". Đã dính đúng thế 28/08/2026.
+    const v = doc('sell/chenCot.js');
+    const dau = v.indexOf('const CSS = ');
+    const khoi = v.slice(dau + 12);
+    const het = khoi.indexOf('`;');
+    assert.ok(het > 0, 'không tìm thấy chỗ đóng khối CSS');
+    assert.strictEqual(khoi.slice(1, het).includes('`'), false,
+        'có dấu huyền ngược trong khối CSS — chuỗi bị cắt, mã chạy sai');
+});
+
+test('⭐ bảng cài đặt rộng hơn hộp thoại thường', () => {
+    // Dòng khách có tới 5 ô nhập nối nhau; 760px là tên khách bị bẻ ba dòng.
+    const v = doc('sell/chenCot.js');
+    assert.match(v, /#hdt-bang-cai-dat \.hdt-hop \{ width:min\(1100px,100%\); \}/,
+        'chưa nới riêng bảng cài đặt');
+    assert.match(v, /\.hdt-hop \{[^}]*width:min\(760px,100%\)/,
+        'nới chung mọi hộp thoại — hộp vài dòng chữ kéo dài cả mét, đọc mệt hơn');
+});
+
+test('⭐⭐ tên khách KHÔNG bị bẻ dòng, và cắt thì phải còn tên đầy đủ', async () => {
+    const v = doc('sell/chenCot.js');
+    assert.match(v, /\.hdt-dong-khach \.ten \{[^}]*white-space:nowrap/,
+        'tên bẻ ba dòng -> mỗi khách cao gấp ba, các ô bên phải lệch hàng');
+    assert.match(v, /\.hdt-dong-khach \.ten \{[^}]*text-overflow:ellipsis/);
+
+    // Cắt bằng ba chấm mà không giữ tên đầy đủ thì hai khách cùng tiền tố nhìn
+    // hệt nhau — mà đây là chỗ chọn ai được phát hành hóa đơn thuế.
+    const { tailieu, bang } = dungTrang({ caiDat: {} });
+    ChenCot.chenVao(bang);
+    await ChenCot.moBangCaiDat(bang);
+    const ten = tailieu.querySelector('#hdt-hen-ds-khach .hdt-dong-khach .ten');
+    assert.ok(ten, 'không thấy dòng khách nào');
+    assert.ok(String(ten.title || '').length > 3,
+        'cắt ba chấm mà không gắn tên đầy đủ vào title — mất chữ vĩnh viễn');
+    assert.ok(ten.title.includes(ten.textContent.trim().slice(0, 8)),
+        'title không khớp tên đang hiện');
+});
+
+test('⭐ danh sách khách hiện được nhiều dòng hơn', () => {
+    const v = doc('sell/chenCot.js');
+    const m = /\.hdt-ds-khach \{[^}]*max-height:(\d+)px/.exec(v);
+    assert.ok(m, 'không tìm thấy chiều cao danh sách khách');
+    assert.ok(Number(m[1]) >= 260,
+        `danh sách chỉ cao ${m[1]}px — nhìn được hai khách rồi phải cuộn`);
+});
+
 chay('BẢNG CÀI ĐẶT: ĐỘ LỆCH VÀ HẸN GIỜ');

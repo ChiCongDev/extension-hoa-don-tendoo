@@ -434,8 +434,16 @@ test('⭐ màn khai báo bày HỎNG MỘT PHẦN bằng màu đỏ, như hỏng
 
 ghiChu('── Không phá nếp cũ ──');
 
-test('⭐ phiên bản đã tăng', () => {
-    assert.strictEqual(JSON.parse(doc('manifest.json')).version, '2.34.0');
+test('⭐ phiên bản KHÔNG tụt về trước bản mang tính năng này', () => {
+    // ⚠️ KHÔNG so BẰNG. 2.34.0 là bản đầu tiên báo về nhiều nơi; mọi bản sau
+    // đều phải lớn hơn. So bằng thì lần tăng phiên bản kế tiếp là bài này đỏ
+    // vì một lý do chẳng liên quan gì tới việc báo nhiều nơi — đã dính đúng
+    // một lần với bài tương tự ở tachCotXhd.
+    const so = (v) => String(v).split('.').map(Number);
+    const [a, b, c] = so(JSON.parse(doc('manifest.json')).version);
+    const [x, y, z] = so('2.34.0');
+    assert.ok(a !== x ? a > x : (b !== y ? b > y : c >= z),
+        'phiên bản tụt về trước 2.34.0 — bản đó chưa báo về nhiều nơi');
 });
 
 test('⭐ vẫn CHỈ báo khi hóa đơn ĐÃ RA THẬT', async () => {

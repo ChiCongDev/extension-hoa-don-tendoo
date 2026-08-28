@@ -88,6 +88,7 @@ function goiTuBanGhi(banGhi) {
                 && Number(k.tongTendoo) !== Number(k.soTien)
                 ? { so_tien_dinh: Number(k.soTien) } : {}),
             kieu_xuat: kieuXuatCua(k.soTienDat),
+            ...(k.ngayCuoiTuChon ? { ngay_cuoi_tu_chon: true } : {}),
             ket_qua: String(k.ket || 'LOI'),
             ly_do: String(k.chiTiet || ''),
             // ⚠️ MÃ CHỐNG TRÙNG PHẢI GIỐNG NHAU Ở CẢ HAI ĐƯỜNG GỬI (gửi ngay
@@ -177,6 +178,10 @@ function dongTuTienDo(tienDo, ngay, luc) {
             && Number(soTien) !== Number(l.soTien)
             ? { so_tien_dinh: Number(l.soTien) } : {}),
         kieu_xuat: kieuXuatCua(l.soTienDat),
+        // ⚠️ CHỈ để Telegram nhắn "từ mai không xuất nữa". Sell KHÔNG dùng khoá
+        // này và bỏ qua khoá lạ — cố ý: hạn chạy là chuyện của extension, không
+        // phải chuyện của sổ kế toán.
+        ...(l.ngayCuoiTuChon ? { ngay_cuoi_tu_chon: true } : {}),
         ket_qua: ket,
         ly_do: lyDo,
         ma_lenh: l.id ? String(l.id) : `${khi}-${l.maKH}`,

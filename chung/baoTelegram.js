@@ -173,6 +173,14 @@ function soanTin(dong) {
     // Tin lỗi/treo thì lý do CHÍNH LÀ nội dung, phải gọi đúng tên nó.
     const lyDo = chuoi(d.ly_do);
     if (lyDo) cac.push(loai === 'RA' ? `⚠ ${lyDo}` : `Lý do: ${lyDo}`);
+    // ⚠️ HÔM NAY LÀ NGÀY CUỐI của hạn "chạy trong N ngày" — chủ dự án chốt
+    // 27/08/2026. Nhắn ở lượt CUỐI chứ không phải hôm sau: hôm sau mốc ấy không
+    // còn báo thức nào để đánh thức máy dậy mà nhắn. Nói trước thì còn kịp gia hạn.
+    if (d.ngay_cuoi_tu_chon) {
+        cac.push('⏳ Đây là NGÀY CUỐI của hạn "tiền/ngày" cho khách này. '
+            + 'Từ mai máy KHÔNG xuất hóa đơn tự chọn cho họ nữa — muốn chạy tiếp '
+            + 'thì mở bảng cài đặt gõ lại số ngày.');
+    }
     return cac.join('\n');
 }
 

@@ -48,6 +48,12 @@ const CSS = `
   display:flex; align-items:center; justify-content:center; padding:16px; }
 .hdt-hop { background:#fff; border-radius:12px; width:min(760px,100%); max-height:86vh;
   overflow:auto; font-family:inherit; color:#111827; }
+/* ⚠️ CHỈ BẢNG CÀI ĐẶT RỘNG RA, không nới chung lớp .hdt-hop. Mấy hộp thoại kia
+   (gỡ lệnh treo, kết quả kiểm thử) chỉ có vài dòng chữ — kéo rộng ra là chữ
+   chạy dài cả mét, đọc mệt hơn hẳn.
+   Dòng khách ở đây có tới 5 ô nhập nối nhau (giờ · tiền · giờ tiền · số ngày ·
+   chữ hạn) nên 760px là tên khách bị bẻ làm ba dòng. */
+#hdt-bang-cai-dat .hdt-hop { width:min(1100px,100%); }
 .hdt-dau { padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex;
   align-items:center; justify-content:space-between; }
 .hdt-dau h2 { font-size:16px; font-weight:600; margin:0; }
@@ -89,17 +95,40 @@ const CSS = `
   padding:7px 10px; font-size:13px; font-family:inherit; }
 .hdt-ghi { font-size:11.5px; color:#6b7280; line-height:1.5; margin-top:6px; }
 .hdt-ghi.hdt-do { color:#b91c1c; font-weight:600; }
-.hdt-ds-khach { max-height:170px; overflow:auto; border:1px solid #e5e7eb;
+.hdt-ds-khach { max-height:290px; overflow:auto; border:1px solid #e5e7eb;
   border-radius:7px; padding:6px 8px; }
-.hdt-dong-khach { display:flex; align-items:center; gap:6px; font-size:12.5px;
-  padding:3px 0; }
-.hdt-dong-khach .ten { flex:1; cursor:pointer; }
+.hdt-dong-khach { display:flex; align-items:center; gap:8px; font-size:12.5px;
+  padding:5px 0; border-bottom:1px dashed #f3f4f6; }
+.hdt-dong-khach:last-child { border-bottom:0; }
+/* ⚠️ TÊN KHÁCH KHÔNG ĐƯỢC BẺ DÒNG. Bẻ làm ba dòng thì mỗi khách cao gấp ba,
+   danh sách chỉ còn nhìn thấy hai người, và mấy ô nhập bên phải lệch hàng nhau
+   nên không biết ô nào của ai. Dài quá thì cắt bằng dấu ba chấm — tên đầy đủ
+   vẫn còn ở thuộc tính title khi rê chuột. */
+.hdt-dong-khach .ten { flex:1; min-width:230px; cursor:pointer;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hdt-gio-rieng { width:96px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
   padding:3px 6px; font-size:11.5px; font-family:inherit; text-align:center; }
 .hdt-gio-rieng.co { border-color:#2563eb; color:#1d4ed8; font-weight:600; }
 .hdt-tien-ngay { width:130px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
   padding:4px 8px; font-size:13px; text-align:right; }
 .hdt-tien-ngay.co { border-color:#b45309; color:#b45309; font-weight:600; }
+/* Giờ của lượt TỰ CHỌN — cùng màu hổ phách với ô tiền để mắt nhìn ra ngay hai
+   ô này là MỘT cặp, tách khỏi cặp (tích hệ thống + giờ hệ thống) màu xanh. */
+.hdt-gio-tien { width:96px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
+  padding:3px 6px; font-size:11.5px; font-family:inherit; text-align:center; }
+.hdt-gio-tien.co { border-color:#b45309; color:#b45309; font-weight:600; }
+/* Gõ tiền mà quên gõ giờ thì phần tự chọn KHÔNG chạy — phải đỏ lên tại chỗ,
+   đừng để người dùng bấm Lưu rồi tưởng đã xong. */
+.hdt-gio-tien.thieu { border-color:#b91c1c; background:#fef2f2; }
+.hdt-so-ngay { width:74px; flex-shrink:0; border:1px solid #d1d5db; border-radius:6px;
+  padding:3px 6px; font-size:11.5px; font-family:inherit; text-align:center; }
+.hdt-so-ngay.co { border-color:#b45309; color:#b45309; font-weight:600; }
+/* Chữ "còn N ngày" / "hết hạn". Hết hạn phải ĐỎ và ĐẬM: nó nghĩa là khách
+   này đã ngừng ra hóa đơn, không phải một dòng ghi chú cho vui. */
+.hdt-han { font-size:11px; color:#6b7280; min-width:76px; flex-shrink:0; }
+.hdt-han.het { color:#b91c1c; font-weight:600; }
+.hdt-vach-doc { width:1px; align-self:stretch; background:#e5e7eb; margin:0 2px;
+  flex-shrink:0; }
 .hdt-muc-ss { display:flex; justify-content:space-between; gap:10px; font-size:12px;
   padding:3px 0; border-bottom:1px dashed #f3f4f6; }
 .hdt-muc-ss:last-child { border-bottom:0; }
@@ -850,7 +879,7 @@ function veKetQuaThu(tailieu, o, kq) {
  * ở trang này" nhưng "không làm ảnh hưởng đến project Sell"; hai câu đó không
  * mâu thuẫn, và đây là cách thỏa cả hai.
  */
-function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
+function veBangCaiDat(tailieu, bang, caiDat, tinhTrang, lichSuChay) {
     let capNhatNutLuu = null;      // gán ở phần chân bảng, dùng ở phần chọn khách
     const c = caiDat || {};
     const h = c.henGio || {};
@@ -991,9 +1020,10 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
     ghiMoc.className = 'hdt-ghi';
     ghiMoc.id = 'hdt-hen-ghi-moc';
     ghiMoc.textContent = 'Đây là GIỜ CHUNG, áp dụng cho khách nào KHÔNG có giờ riêng. '
-        + 'Mỗi khách chỉ chạy ĐÚNG MỘT lần mỗi ngày — máy lấy doanh thu của riêng ngày hôm '
-        + 'đó (tính tới lúc chạy), nên chạy hai lần trong ngày sẽ tính trùng phần buổi sáng. '
-        + 'Gõ nhiều giờ thì máy giữ giờ sớm nhất.';
+        + 'Lượt XUẤT THEO HỆ THỐNG mỗi khách chỉ chạy ĐÚNG MỘT lần mỗi ngày — máy lấy doanh '
+        + 'thu của riêng ngày hôm đó (tính tới lúc chạy), nên chạy hai lần trong ngày sẽ tính '
+        + 'trùng phần buổi sáng. Gõ nhiều giờ thì máy giữ giờ sớm nhất. '
+        + 'Lượt TIỀN/NGÀY nằm ngoài luật này: nó không đọc doanh thu nên có lịch riêng.';
     khoiHen.appendChild(ghiMoc);
 
     const ghiNgay = tailieu.createElement('div');
@@ -1011,8 +1041,10 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
     // ra, tích ô hẹn giờ, bấm Lưu, rồi nhận về "Hẹn giờ TẮT" mà không hiểu vì
     // sao. Đó là cái bẫy do mình dựng ra. Nay liệt kê khách ngay trong bảng này.
     const nhanKhach = tailieu.createElement('label');
-    nhanKhach.textContent = 'Khách sẽ tự tạo hóa đơn (ô bên phải: giờ riêng, '
-        + 'để trống là theo giờ chung)';
+    nhanKhach.textContent = 'Khách sẽ tự tạo hóa đơn — HAI LỊCH TÁCH RỜI: '
+        + '[tích + giờ] xuất theo hệ thống (để trống là theo giờ chung) │ '
+        + '[tích + tiền/ngày + giờ + số ngày] xuất theo số tự chọn '
+        + '(bắt buộc điền giờ; số ngày để trống là chạy mãi)';
     khoiHen.appendChild(nhanKhach);
 
     const dsBang = bang ? globalThis.HDT_DocBang.docCacDong(bang) : [];
@@ -1031,6 +1063,20 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
     const gioRiengCu = new Map((h.khach || []).map(k => [k.maKH, k.moc || '']));
     const tienNgayCu = new Map((h.khach || []).map(
         k => [k.maKH, k.soTienNgay ? String(k.soTienNgay) : '']));
+    const gioTienCu = new Map((h.khach || []).map(k => [k.maKH, k.mocTien || '']));
+    const soNgayCu = new Map((h.khach || []).map(
+        k => [k.maKH, k.soNgayTuChon ? String(k.soNgayTuChon) : '']));
+    // Giữ nguyên bản ghi để tính "còn mấy ngày" — cần cả `batDauTuChon`.
+    const khachCu = new Map((h.khach || []).map(k => [k.maKH, k]));
+    // ⚠️ HAI CÔNG TẮC TÁCH RỜI (27/08/2026). Bản ghi cũ không có hai cờ này;
+    // `caiDat.chuanKhach` đã chuyển sang cờ lúc đọc, nhưng ở đây vẫn phải có
+    // lưới đỡ cho gói dựng tay — thiếu nó là mở màn hình lên thấy tắt sạch.
+    // Nếp cũ: có `soTienNgay` nghĩa là khách ấy CHỈ xuất theo số đã đặt.
+    const coCo = (k) => ('batHeThong' in k) || ('batTuChon' in k);
+    const batHTCu = new Map((h.khach || []).map(
+        k => [k.maKH, coCo(k) ? !!k.batHeThong : !k.soTienNgay]));
+    const batTCCu = new Map((h.khach || []).map(
+        k => [k.maKH, coCo(k) ? !!k.batTuChon : !!k.soTienNgay]));
     for (const k of [...dsBang, ...themNgoai]) {
         const d = tailieu.createElement('div');
         d.className = 'hdt-dong-khach';
@@ -1044,10 +1090,25 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
         o.dataset.ten = k.tenKH || '';
         o.checked = daChonSan.has(k.maKH);
         nhan.appendChild(o);
-        nhan.appendChild(tailieu.createTextNode(
-            ` ${k.maKH} — ${k.tenKH || ''}`
-            + (k.doanhThu != null ? ` (${tienVN(k.doanhThu)}đ)` : ' (không còn trên bảng)')));
+        const chuTen = ` ${k.maKH} — ${k.tenKH || ''}`
+            + (k.doanhThu != null ? ` (${tienVN(k.doanhThu)}đ)` : ' (không còn trên bảng)');
+        nhan.appendChild(tailieu.createTextNode(chuTen));
+        // Tên dài bị cắt bằng dấu ba chấm (xem .hdt-dong-khach .ten). Không gắn
+        // tên đầy đủ vào đây thì hai khách cùng tiền tố nhìn hệt nhau, mà đây là
+        // chỗ chọn ai được phát hành hóa đơn thuế — nhầm là nhầm thật.
+        nhan.title = chuTen.trim();
         d.appendChild(nhan);
+
+        // ── CỘT 1: XUẤT THEO HỆ THỐNG (lấy doanh thu hôm nay) ───────────────
+        const oBatHT = tailieu.createElement('input');
+        oBatHT.type = 'checkbox';
+        oBatHT.className = 'hdt-bat-ht';
+        oBatHT.dataset.ma = k.maKH;
+        oBatHT.checked = batHTCu.get(k.maKH) !== false;
+        oBatHT.title = 'Bật = xuất hóa đơn theo DOANH THU hôm nay.\n'
+            + 'Tắt = khách này không xuất theo doanh thu nữa, nhưng vẫn xuất\n'
+            + 'theo "tiền/ngày" nếu cột bên phải đang bật.';
+        d.appendChild(oBatHT);
 
         // ⚠️ GIỜ RIÊNG: điền vào thì GIỜ CHUNG KHÔNG đụng tới khách này nữa.
         const oGio = tailieu.createElement('input');
@@ -1055,14 +1116,35 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
         oGio.className = 'hdt-gio-rieng';
         oGio.dataset.ma = k.maKH;
         oGio.placeholder = 'giờ riêng';
-        oGio.title = 'Để trống = chạy theo giờ chung. Điền giờ riêng thì giờ chung '
+        oGio.title = 'Giờ của lượt XUẤT THEO HỆ THỐNG.\n'
+            + 'Để trống = chạy theo giờ chung. Điền giờ riêng thì giờ chung '
             + 'không đụng tới khách này nữa.';
         oGio.value = gioRiengCu.get(k.maKH) || '';
         oGio.classList.toggle('co', !!oGio.value);
         d.appendChild(oGio);
 
-        // ⚠️ SỐ TIỀN XUẤT MỖI NGÀY — thay hẳn cho doanh số hôm nay.
-        // Để TRỐNG là chạy nếp cũ, và nếp cũ thì đã chạy đúng.
+        const vach = tailieu.createElement('div');
+        vach.className = 'hdt-vach-doc';
+        d.appendChild(vach);
+
+        // ── CỘT 2: XUẤT THEO SỐ TỰ CHỌN — LỊCH RIÊNG, KHÔNG DÍNH CỘT 1 ──────
+        //
+        // ⚠️ Chủ dự án chốt 27/08/2026: hai cột TÁCH RỜI. Bật cả hai thì trong
+        // ngày khách ra HAI hóa đơn, mỗi cái một giờ.
+        //
+        // Chuyện này KHÔNG phá luật "mỗi ngày đúng một mốc" (13/08/2026): luật
+        // ấy sinh ra vì lượt hệ thống lấy doanh thu cộng dồn tới lúc chạy, nên
+        // chạy hai lần là tính trùng phần buổi sáng. Lượt tự chọn không đọc
+        // doanh thu, không có gì để tính trùng.
+        const oBatTC = tailieu.createElement('input');
+        oBatTC.type = 'checkbox';
+        oBatTC.className = 'hdt-bat-tc';
+        oBatTC.dataset.ma = k.maKH;
+        oBatTC.checked = !!batTCCu.get(k.maKH);
+        oBatTC.title = 'Bật = mỗi ngày xuất THÊM một hóa đơn đúng số bên phải,\n'
+            + 'vào giờ bên phải. Hoàn toàn tách rời lượt theo hệ thống.';
+        d.appendChild(oBatTC);
+
         const oTien = tailieu.createElement('input');
         oTien.type = 'text';
         oTien.className = 'hdt-tien-ngay';
@@ -1071,12 +1153,53 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
         // ⚠️ Chủ dự án chốt 25/08/2026: con số gõ vào đây là con số CUỐI CÙNG,
         // không so với doanh số hôm nay, không so với số dư chưa xuất hóa đơn,
         // không so với bất cứ dữ liệu nào. Bản trước có trần theo số dư; đã bỏ.
-        oTien.title = 'Để TRỐNG = xuất đúng doanh số hôm nay (như từ trước tới nay).\n'
-            + 'Điền số = mỗi ngày xuất đúng số này, BẤT KỂ doanh số hôm nay và\n'
+        oTien.title = 'Mỗi ngày xuất đúng số này, BẤT KỂ doanh số hôm nay và\n'
             + 'KHÔNG so với bất kỳ dữ liệu nào khác.';
         oTien.value = tienNgayCu.get(k.maKH) || '';
         oTien.classList.toggle('co', !!oTien.value);
         d.appendChild(oTien);
+
+        // ⚠️ GIỜ CỦA LƯỢT TỰ CHỌN. Để trống thì phần tự chọn KHÔNG chạy — chủ
+        // dự án chốt. Mượn giờ chung hay mượn giờ cột bên là phát hành một tờ
+        // hóa đơn thuế vào giờ người dùng chưa hề chọn.
+        const oGioTien = tailieu.createElement('input');
+        oGioTien.type = 'text';
+        oGioTien.className = 'hdt-gio-tien';
+        oGioTien.dataset.ma = k.maKH;
+        oGioTien.placeholder = 'giờ tiền/ngày';
+        oGioTien.title = 'Giờ của lượt XUẤT THEO TIỀN/NGÀY.\n'
+            + 'ĐỂ TRỐNG = phần tiền/ngày KHÔNG chạy (không mượn giờ chung).';
+        oGioTien.value = gioTienCu.get(k.maKH) || '';
+        oGioTien.classList.toggle('co', !!oGioTien.value);
+        d.appendChild(oGioTien);
+
+        // ── HẠN CHẠY: bao nhiêu NGÀY rồi tự dừng ────────────────────────────
+        //
+        // ⚠️ Chủ dự án chốt 27/08/2026: đếm theo NGÀY LỊCH kể từ lúc lưu, kể cả
+        // hôm lưu. Máy tắt hôm nào thì hôm đó vẫn tiêu — đó là lựa chọn có ý,
+        // đổi lại không có số đếm lùi nào để hỏng.
+        //
+        // Hết hạn thì máy NGỪNG CHẠY nhưng KHÔNG tự gạt ô tích: tiến trình nền
+        // không tự sửa cài đặt của người dùng. Ô này sẽ hiện "hết hạn".
+        const oSoNgay = tailieu.createElement('input');
+        oSoNgay.type = 'text';
+        oSoNgay.className = 'hdt-so-ngay';
+        oSoNgay.dataset.ma = k.maKH;
+        oSoNgay.placeholder = 'số ngày';
+        oSoNgay.title = 'Lượt tiền/ngày chạy trong bao nhiêu NGÀY rồi tự dừng.\n'
+            + 'Tính cả hôm bấm Lưu: gõ 1 là chỉ chạy đúng hôm nay.\n'
+            + 'ĐỂ TRỐNG = chạy mãi, như trước.\n'
+            + 'Sửa lại con số này thì hạn đếm lại từ hôm nay.';
+        oSoNgay.value = soNgayCu.get(k.maKH) || '';
+        oSoNgay.classList.toggle('co', !!oSoNgay.value);
+        d.appendChild(oSoNgay);
+
+        // Chữ "còn N ngày" / "hết hạn" — người dùng phải nhìn ra ngay còn mấy
+        // hôm nữa, chứ không phải ngồi nhẩm từ ngày lưu.
+        const chuHan = tailieu.createElement('span');
+        chuHan.className = 'hdt-han';
+        chuHan.dataset.ma = k.maKH;
+        d.appendChild(chuHan);
 
         oKhach.appendChild(d);
     }
@@ -1100,12 +1223,28 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
             const moc = g ? String(g.value || '').trim() : '';
             const t = oKhach.querySelector(`input.hdt-tien-ngay[data-ma="${o.dataset.ma}"]`);
             const soTienNgay = t ? String(t.value || '').trim() : '';
-            // Ô tích trả lời "có trong lịch không"; hai ô kia chỉ trả lời "lúc
-            // mấy giờ" và "bao nhiêu tiền". Bỏ tích là ra khỏi lịch, hai ô còn
-            // ghi gì ở đó cũng vô nghĩa.
-            const k2 = { maKH: o.dataset.ma, tenKH: o.dataset.ten };
+            const gt = oKhach.querySelector(`input.hdt-gio-tien[data-ma="${o.dataset.ma}"]`);
+            const mocTien = gt ? String(gt.value || '').trim() : '';
+            const bHT = oKhach.querySelector(`input.hdt-bat-ht[data-ma="${o.dataset.ma}"]`);
+            const bTC = oKhach.querySelector(`input.hdt-bat-tc[data-ma="${o.dataset.ma}"]`);
+            // Ô tích ngoài cùng trả lời "có trong lịch không"; hai ô tích bên
+            // trong trả lời "chạy lượt nào". Bỏ tích ngoài là ra khỏi lịch, mọi
+            // thứ ghi ở các ô kia cũng vô nghĩa.
+            //
+            // ⚠️ LUÔN GỬI CẢ HAI CỜ, kể cả khi false. Bỏ khoá đi thì
+            // `caiDat.chuanKhach` tưởng đây là bản ghi cũ và tự đoán lại — tắt
+            // tích rồi lưu xong mở lên vẫn thấy bật.
+            const k2 = {
+                maKH: o.dataset.ma, tenKH: o.dataset.ten,
+                batHeThong: bHT ? !!bHT.checked : true,
+                batTuChon: bTC ? !!bTC.checked : false,
+            };
             if (moc) k2.moc = moc;
             if (soTienNgay) k2.soTienNgay = soTienNgay;
+            if (mocTien) k2.mocTien = mocTien;
+            const sn = oKhach.querySelector(`input.hdt-so-ngay[data-ma="${o.dataset.ma}"]`);
+            const soNgay = sn ? String(sn.value || '').trim() : '';
+            if (soNgay) k2.soNgayTuChon = soNgay;
             return k2;
         });
 
@@ -1126,17 +1265,83 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
             const goi = { bat: true, moc: [oMoc.value], khach: ds };
             const nhom = HenGio ? HenGio.gomTheoMoc(goi) : [];
             const lacLoi = HenGio ? HenGio.khachKhongCoGio(goi) : [];
+            // ⚠️ Gõ tiền mà quên gõ giờ thì phần tự chọn KHÔNG chạy. Không kêu
+            // lên ở đây là người dùng bấm Lưu, thấy mọi thứ bình thường, rồi
+            // chờ mãi một tờ hóa đơn không bao giờ tới.
+            const thieuGio = HenGio ? HenGio.khachThieuGioTien(goi) : [];
+            // Tích khách nhưng tắt cả hai cột = có tên trong lịch mà không chạy
+            // lượt nào. Cũng là một cách hỏng im lặng.
+            const tatCaHai = ds.filter(k => !k.batHeThong && !k.batTuChon);
+            // Mỗi mục nay có cờ `kieu` -> ghi rõ ai chạy kiểu gì, kẻo cùng một
+            // tên hiện ở hai mốc mà không biết mốc nào là mốc nào.
+            const ten = (k) => (k.tenKH || k.maKH) + (k.kieu === 'tu_chon' ? ' (tiền/ngày)' : '');
             ghiKhach.textContent = `Đã chọn ${n} khách. `
                 + (nhom.length
-                    ? nhom.map(o => `${o.moc}: ${o.khach.length ? o.khach.map(
-                        k => k.tenKH || k.maKH).join(', ') : '(không còn khách nào)'}`).join(' · ')
+                    ? nhom.map(o => `${o.moc}: ${o.khach.length ? o.khach.map(ten).join(', ')
+                        : '(không còn khách nào)'}`).join(' · ')
                     : '')
                 + (lacLoi.length
                     ? ` ⚠ ${lacLoi.length} khách CHƯA CÓ GIỜ NÀO (chưa đặt giờ chung, cũng `
                       + `không có giờ riêng): ${lacLoi.map(k => k.tenKH || k.maKH).join(', ')}`
+                    : '')
+                + (thieuGio.length
+                    ? ` ⚠ ${thieuGio.length} khách BẬT "tiền/ngày" NHƯNG CHƯA ĐIỀN GIỜ nên phần `
+                      + `đó KHÔNG chạy: ${thieuGio.map(k => k.tenKH || k.maKH).join(', ')}`
+                    : '')
+                + (tatCaHai.length
+                    ? ` ⚠ ${tatCaHai.length} khách TẮT CẢ HAI cột nên không chạy lượt nào: `
+                      + `${tatCaHai.map(k => k.tenKH || k.maKH).join(', ')}`
                     : '');
-            ghiKhach.classList.toggle('hdt-do', lacLoi.length > 0);
+            ghiKhach.classList.toggle('hdt-do',
+                lacLoi.length > 0 || thieuGio.length > 0 || tatCaHai.length > 0);
         }
+        // ⚠️ CHỮ "CÒN N NGÀY" cạnh từng khách. Con số ngày một mình không nói
+        // được gì: người dùng phải nhẩm từ hôm lưu mới ra ngày dừng. Bày thẳng
+        // ra đây, và tô ĐỎ khi đã hết — hết hạn nghĩa là khách đó ngừng ra hóa
+        // đơn, phải nhìn phát thấy ngay.
+        if (HenGio) {
+            for (const oH of oKhach.querySelectorAll('span.hdt-han')) {
+                const ma = oH.dataset.ma;
+                const sn = oKhach.querySelector(`input.hdt-so-ngay[data-ma="${ma}"]`);
+                const bTC = oKhach.querySelector(`input.hdt-bat-tc[data-ma="${ma}"]`);
+                const soGo = sn ? String(sn.value || '').trim() : '';
+                oH.classList.remove('het');
+                if (!soGo || !(bTC && bTC.checked)) { oH.textContent = ''; continue; }
+                const cu2 = khachCu.get(ma) || {};
+                // Số vừa gõ KHÁC số đã lưu -> hạn sẽ đếm lại từ hôm nay, nên
+                // phải tính theo con số MỚI chứ không theo bản ghi cũ.
+                const doiSo = String(cu2.soNgayTuChon || '') !== soGo;
+                const ban = doiSo
+                    ? { maKH: ma, soNgayTuChon: Number(soGo), batDauTuChon: HenGio.ngayVN() }
+                    : { ...cu2, maKH: ma };
+                // ⚠️ TRỪ HẲN HÔM NAY RA KHI HÔM NAY ĐÃ CHẠY — chủ dự án chốt
+                // 27/08/2026. Xuất xong mà con số đứng yên tới nửa đêm thì nhìn
+                // như máy không ghi nhận gì. Con số này nghĩa là "còn bấy nhiêu
+                // ngày NỮA sẽ chạy", không phải "còn bấy nhiêu ngày lịch".
+                //
+                // Gõ số MỚI thì hạn đếm lại từ hôm nay -> hôm nay chưa chạy
+                // theo hạn mới, không trừ.
+                const conLai = doiSo
+                    ? HenGio.soNgayConLai(ban)
+                    : HenGio.soNgayChayTiep(ban, lichSuChay);
+                if (conLai == null) { oH.textContent = ''; continue; }
+                const het = HenGio.ngayHetHanTuChon(ban);
+                const daChay = !doiSo
+                    && HenGio.daChayTuChonHomNay(ma, lichSuChay);
+                if (conLai <= 0) {
+                    // Phân biệt HAI ca: hôm nay vừa chạy nốt ngày cuối (mai mới
+                    // dừng) và đã quá hạn từ trước. Gộp làm một là người dùng
+                    // tưởng máy dừng sớm mất một ngày.
+                    oH.textContent = daChay ? 'xong hạn — mai dừng' : 'hết hạn';
+                    oH.classList.add('het');
+                } else {
+                    oH.textContent = `còn ${conLai} ngày`;
+                }
+                oH.title = (het ? 'Ngày chạy cuối cùng: ' + het : '')
+                    + (daChay ? ' · hôm nay đã chạy lượt tiền/ngày rồi' : '');
+            }
+        }
+
         // Cảnh báo hai mốc quá sát — lượt sau sẽ bị bỏ qua vì lượt trước chưa xong.
         if (HenGio && ghiSat) {
             const sat = HenGio.mocQuaSat({ moc: [oMoc.value], khach: ds });
@@ -1152,8 +1357,14 @@ function veBangCaiDat(tailieu, bang, caiDat, tinhTrang) {
     };
     oKhach.addEventListener('change', capNhatGhiKhach);
     oKhach.addEventListener('input', (su) => {
-        if (su.target && su.target.classList.contains('hdt-gio-rieng')) {
-            su.target.classList.toggle('co', !!String(su.target.value || '').trim());
+        const t = su.target;
+        if (!t || !t.classList) return;
+        // Cả ba ô gõ tay đều phải tô lại và tính lại lời nhắc. Quên ô giờ
+        // tiền/ngày ở đây là cảnh báo "chưa điền giờ" không bao giờ tắt đi
+        // ngay cả sau khi người dùng đã điền.
+        if (t.classList.contains('hdt-gio-rieng') || t.classList.contains('hdt-gio-tien')
+            || t.classList.contains('hdt-tien-ngay') || t.classList.contains('hdt-so-ngay')) {
+            t.classList.toggle('co', !!String(t.value || '').trim());
             capNhatGhiKhach();
         }
     });
@@ -1457,7 +1668,12 @@ async function moBangCaiDat(bang) {
 
     const caiDat = await goiNen(tailieu, { loai: 'hdt-hoi-cai-dat' });
     const tinhTrang = await goiNen(tailieu, { loai: 'hdt-ket-qua-hen-gio' });
-    const phu = veBangCaiDat(tailieu, bang, caiDat, tinhTrang);
+    // ⚠️ LẤY LỊCH SỬ CHẠY NGAY TỪ ĐẦU, không đợi khối lịch sử vẽ xong. Chữ
+    // "còn N ngày" cần biết hôm nay khách đã chạy lượt tiền/ngày chưa; thiếu nó
+    // thì con số đứng yên sau khi xuất — đúng cái chủ dự án phàn nàn 27/08/2026.
+    // Hỏng thì coi như chưa chạy: thà hiện thừa một ngày còn hơn trừ oan.
+    const ls = await goiNen(tailieu, { loai: 'hdt-lich-su-chay' });
+    const phu = veBangCaiDat(tailieu, bang, caiDat, tinhTrang, (ls && ls.ds) || []);
     (tailieu.body || tailieu.documentElement).appendChild(phu);
     return phu;
 }

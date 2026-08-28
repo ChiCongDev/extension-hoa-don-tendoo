@@ -291,10 +291,18 @@ test('⭐⭐ ô sửa tay gửi kèm kieu_xuat, lấy từ đúng cột vừa b�
         'không gửi kiểu — mọi lần sửa tay đều rơi vào cột "theo hệ thống"');
 });
 
-test('⭐ điền sẵn phải lọc theo kiểu đang mở', () => {
+// ⚠️ BÀI NÀY BÁM LỜI HỨA, KHÔNG BÁM CÁCH LÀM. Bản đầu tôi bám đúng một dòng mã
+// (`x.kieu_xuat === kieuMo`), rồi Sell viết lại phần ấy theo cách khác — máy chủ
+// trả sẵn `xhd` tách theo kiểu, giao diện chỉ lấy `xhd[kieu]`. Cách mới chặt hơn
+// hẳn, nhưng test cũ đỏ lên vì lý do sai. Lời hứa cần giữ chỉ có một: ô nhập
+// phải điền sẵn số CỦA ĐÚNG CỘT ĐANG MỞ.
+test('⭐ điền sẵn lấy số của ĐÚNG kiểu đang mở', () => {
     const v = docSell(VIEW);
-    assert.match(v, /\(x\.kieu_xuat \|\| 'he_thong'\) === kieuMo/,
-        'điền sẵn lấy bừa dòng tay đầu tiên — bấm Lưu là chép số sang cột sai');
+    const t = v.slice(v.indexOf('function veOXhdTay'));
+    assert.match(t.slice(0, 400), /xhd\[kieu\]/,
+        'ô nhập không tra theo kiểu — bấm Lưu là chép số sang cột sai');
+    assert.match(v, /veOXhdTay\([^)]*kieuCuaCot\(cot\)\)/,
+        'mở ô mà không nói đang mở cột nào — điền sẵn số của cột bên cạnh');
 });
 
 test('khối nhập mở cho CẢ HAI cột XHD', () => {

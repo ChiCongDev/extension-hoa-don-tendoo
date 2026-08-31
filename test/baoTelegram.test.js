@@ -764,21 +764,41 @@ test('⛔ KHÔNG nhét baoTelegram.js vào content script', () => {
     }
 });
 
+// ⚠️ BA BÀI DƯỚI ĐÂY TRƯỚC ĐÂY GHIM ĐÚNG MỘT DÒNG MÃ (`if (dong) baoTelegram(dong)`).
+// Ngày 31/08/2026 móc ấy phải xếp lại thứ tự (ghi sổ Sell xong rồi mới đọc số
+// quý), và cả ba đỏ lên vì chuỗi đổi — trong khi LỜI HỨA vẫn còn nguyên. Tệ hơn:
+// bài "KHÔNG await" chuyển sang XANH RỖNG, vì chuỗi nó đi tìm biến mất luôn.
+//
+// Nay bám vào thân hàm và vào TÍNH CHẤT cần giữ, không bám vào cách viết.
+const thanHam = (ma, ten) => {
+    const i = ma.indexOf(ten);
+    if (i < 0) return '';
+    // Đủ dài để trùm hết thân hàm, không lấn sang hàm kế tiếp.
+    return ma.slice(i, i + 1600);
+};
+
 test('⭐⭐ báo NGAY SAU MỖI KHÁCH, cạnh đường đẩy sang Sell', () => {
-    const ma = doc('background.js');
-    assert.match(ma, /if \(dong\) daySangSell\(dong\);[\s\S]{0,200}?if \(dong\) baoTelegram\(dong\);/,
-        'chưa móc vào móc chạy-sau-mỗi-khách');
+    const than = thanHam(doc('background.js'), 'function taoMocDaySell');
+    assert.match(than, /daySangSell\(dong\)/, 'móc từng khách không đẩy sang Sell');
+    assert.match(than, /baoTelegram\(/, 'chưa móc báo Telegram vào móc chạy-sau-mỗi-khách');
 });
 
 test('⛔⛔ KHÔNG await — Telegram chậm KHÔNG được làm chậm loạt hóa đơn', () => {
-    const ma = doc('background.js');
-    assert.ok(!/await baoTelegram\(dong\)/.test(ma),
-        'await ở móc từng khách là để Telegram cầm chân cả loạt phát hành');
+    // Hàm móc PHẢI trả về ngay. Việc chậm (đẩy Sell, đọc số quý, nhắn tin) nằm
+    // trong một khối chạy nền tự bắn đi. Để hàm móc thành `async` là cả vòng
+    // phát hành hóa đơn đứng đợi Telegram.
+    const than = thanHam(doc('background.js'), 'function taoMocDaySell');
+    assert.ok(!/return\s+async\s*\(/.test(than),
+        'hàm móc thành async -> loạt phát hành đứng đợi Telegram');
+    assert.match(than, /\(async \(\) => \{[\s\S]*?\}\)\(\)/,
+        'không có khối chạy nền -> việc chậm nằm thẳng trong hàm móc');
+    assert.match(than, /\.catch\(/,
+        'khối chạy nền không bắt lỗi -> một lời hứa treo làm nền nổ');
 });
 
 test('⭐ có lưới an toàn cuối loạt', () => {
-    const ma = doc('background.js');
-    assert.match(ma, /await baoTelegram\(self\.HDT_DayVeSell\.goiTuBanGhi\(banGhi\)\)/,
+    const than = thanHam(doc('background.js'), 'async function ghiLichSu');
+    assert.match(than, /baoTelegram\([\s\S]{0,80}?goiTuBanGhi\(banGhi\)/,
         'thiếu lưới cuối loạt → tin hỏng giữa chừng không bao giờ được thử lại');
 });
 

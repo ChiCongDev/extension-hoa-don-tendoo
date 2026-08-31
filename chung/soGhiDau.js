@@ -218,6 +218,35 @@ function taoSo(luuTru, tuyChon = {}) {
     }
 
     /** Cả loạt dừng -> các lệnh chưa chạy bị bỏ, KHÔNG âm thầm chạy tiếp. */
+    /**
+     * DỌN LỆNH CHỜ CÒN SÓT TỪ LƯỢT TRƯỚC, và kể tên chúng ra.
+     *
+     * ⚠️ LỖI THẬT NGÀY 31/08/2026. `cauNoi` xếp hàng TRƯỚC rồi mới giành khóa;
+     * khóa bận thì lượt ấy trả về ngay, nhưng lệnh ĐÃ nằm trong sổ ở trạng thái
+     * CHỜ và không ai dọn. Lượt sau rút sạch mọi lệnh CHỜ nên nó gánh luôn lệnh
+     * của lượt trước: mốc 15:35 chỉ có ki?n mà máy xuất cả hóa đơn 5.000.000 của
+     * c?ng — HÓA ĐƠN RA THẬT, vào giờ chủ dự án không hề hẹn.
+     *
+     * Lệnh kẹt qua đêm còn tệ hơn: nó ra vào NGÀY HÔM SAU và tính vào sổ ngày ấy.
+     *
+     * `moiXep` là danh sách id vừa xếp cho lượt này — mọi lệnh CHỜ KHÁC là đồ
+     * còn sót. Truyền id chứ không đếm số lượng: hai lượt có thể xếp cùng một
+     * khách, đếm thì lẫn.
+     */
+    async function boLenhChoCu(moiXep, lyDo) {
+        batBuocNap();
+        const giu = new Set((moiXep || []).map(x => String(x)));
+        const daBo = [];
+        for (const l of so.lenh) {
+            if (l.trangThai !== TRANG_THAI.CHO || giu.has(String(l.id))) continue;
+            l.trangThai = TRANG_THAI.BO;
+            l.thongBao = String(lyDo || 'Lệnh còn sót từ lượt trước — đã bỏ, không xuất hóa đơn.');
+            daBo.push({ ...l });
+        }
+        if (daBo.length) await luu();
+        return daBo;
+    }
+
     async function boCacLenhCho(lyDo) {
         batBuocNap();
         let n = 0;
@@ -258,7 +287,7 @@ function taoSo(luuTru, tuyChon = {}) {
 
     return {
         nap, quetKhiKhoiDong, coLenhTreo, taoLenh, timLanXuatGanDay,
-        danhDauDangXuLy, danhDauXong, danhDauLoi, danhDauTreo, boCacLenhCho,
+        danhDauDangXuLy, danhDauXong, danhDauLoi, danhDauTreo, boCacLenhCho, boLenhChoCu,
         layLenhCho, layLenhTreo, layLenh, danhSach, xuLyLenhTreo,
     };
 }

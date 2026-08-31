@@ -51,6 +51,46 @@ function congNgay(iso, n) {
 }
 
 /**
+ * KHỐI BA THÁNG chứa ngày này — chủ dự án chốt 31/08/2026.
+ *
+ * ⚠️ KHÔNG PHẢI QUÝ LỊCH. Các khối là 12-1-2 · 3-4-5 · 6-7-8 · 9-10-11, tức là
+ * lệch một tháng so với quý kế toán thông thường. Chốt theo đúng hai ví dụ chủ
+ * dự án đưa: đang tháng 8 thì ra 6-7-8, đang tháng 10 thì ra 9-10-11 — hai ví
+ * dụ ấy CHỈ khớp nhau với cách chia này.
+ *
+ * Tháng bắt đầu = m − (m mod 3); ra 0 nghĩa là tháng 12 của NĂM TRƯỚC (khối
+ * 12-1-2 vắt qua giao thừa — quên chỗ này là tháng 1 và 2 cộng nhầm cả năm).
+ *
+ * @returns {{tu:string, den:string, thang:number[]}} khoảng ngày và 3 số tháng
+ */
+function khoiBaThang(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+    if (!m) return null;
+    const nam = Number(m[1]);
+    const thang = Number(m[2]);
+    let namDau = nam;
+    let thangDau = thang - (thang % 3);
+    if (thangDau === 0) { thangDau = 12; namDau = nam - 1; }
+
+    const cac = [];
+    let n = namDau;
+    let t = thangDau;
+    for (let i = 0; i < 3; i++) {
+        cac.push({ nam: n, thang: t });
+        t += 1;
+        if (t > 12) { t = 1; n += 1; }
+    }
+    const cuoi = cac[2];
+    const soNgayCuoi = new Date(Date.UTC(cuoi.nam, cuoi.thang, 0)).getUTCDate();
+    const hai = (x) => String(x).padStart(2, '0');
+    return {
+        tu: `${cac[0].nam}-${hai(cac[0].thang)}-01`,
+        den: `${cuoi.nam}-${hai(cuoi.thang)}-${hai(soNgayCuoi)}`,
+        thang: cac.map(x => x.thang),
+    };
+}
+
+/**
  * NGÀY CUỐI CÙNG lượt tự chọn của khách này còn được chạy. '' = không đặt hạn.
  *
  * ⚠️ TÍNH LẠI MỖI LẦN TỪ (ngày bắt đầu + số ngày), KHÔNG giữ số đếm lùi. Số đếm
@@ -556,6 +596,7 @@ const API = { TIEN_TO, chuanMotMoc, chuanMoc, chuanMocKeRo, chuanMocThoDai,
               mocQuaSat, LY_DO,
               ngayVN, congNgay, ngayHetHanTuChon, hetHanTuChon,
               laNgayCuoiTuChon, soNgayConLai, daChayTuChonHomNay, soNgayChayTiep,
+              khoiBaThang,
               MUI_GIO };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_HenGio = API;

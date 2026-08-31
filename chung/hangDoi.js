@@ -92,10 +92,24 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
         if (!hienTai || hienTai.mayId === mayId) await khoaLuuTru.ghi(null);
     }
 
+    /**
+     * XẾP KHÁCH VÀO HÀNG ĐỢI.
+     *
+     * ⚠️ GIÀNH KHÓA TRƯỚC KHI GHI LỆNH — sửa ngày 31/08/2026. Bản cũ ghi lệnh
+     * xuống sổ rồi mới để `chayLoat` đi giành khóa; khóa bận thì lượt ấy trả về
+     * ngay, còn lệnh nằm lại trong sổ ở trạng thái CHỜ mãi mãi. Lượt sau rút
+     * sạch mọi lệnh CHỜ nên nó gánh luôn — HÓA ĐƠN RA THẬT vào giờ không ai hẹn.
+     *
+     * Giành khóa ở đây KHÔNG thừa so với `chayLoat`: `giuKhoa` gia hạn cho chính
+     * máy này, gọi hai lần không sao. Còn máy khác đang giữ thì chặn ngay từ
+     * đây, chưa ghi một dòng nào vào sổ.
+     */
     async function xepHang(danhSach) {
+        const khoa = await giuKhoa();
+        if (!khoa.ok) return { ok: false, ly_do: 'DANG_CHAY_CHO_KHAC', thongBao: khoa.lyDo, daXep: [] };
         const daXep = [];
         for (const kh of danhSach || []) daXep.push(await so.taoLenh(kh));
-        return daXep;
+        return { ok: true, daXep };
     }
 
     /**
@@ -105,7 +119,7 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
      *        Hàm làm việc thật với một khách. GỌI SAU KHI đã ghi dấu "đang xử lý".
      * @param {(tinTuc:object)=>void} [bao] báo tiến độ ra ngoài
      */
-    async function chayLoat(thucThi, bao = () => {}) {
+    async function chayLoat(thucThi, bao = () => {}, moiXep = null) {
         // (a) Quét dấu sót lại TRƯỚC MỌI THỨ.
         await so.quetKhiKhoiDong();
 
@@ -129,7 +143,23 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
         if (!khoa.ok) return { dung: true, ly_do: 'DANG_CHAY_CHO_KHAC', thongBao: khoa.lyDo };
 
         const ketQua = { xong: [], loi: [], bo: 0, dung: false,
-                         treoDaTuBoQua: treoCu.length };
+                         treoDaTuBoQua: treoCu.length, boLenhCu: [] };
+
+        // ── (b2) DỌN LỆNH CHỜ CÒN SÓT TỪ LƯỢT TRƯỚC ────────────────────────
+        //
+        // ⚠️ Sửa thứ tự ở `xepHang` chặn được đường sinh ra lệnh kẹt, nhưng KHÔNG
+        // dọn được lệnh đã kẹt sẵn trong sổ, và cũng không lo được ca Chrome giết
+        // tiến trình nền giữa `xepHang` và vòng chạy. Hai đường khác nhau, phải
+        // bịt cả hai.
+        //
+        // `moiXep === null` nghĩa là người gọi không nói lượt này xếp những lệnh
+        // nào -> KHÔNG dọn gì, giữ nguyên nếp cũ. Thà bỏ sót còn hơn bỏ nhầm một
+        // lệnh hợp lệ của chính lượt này.
+        if (Array.isArray(moiXep)) {
+            try {
+                ketQua.boLenhCu = await so.boLenhChoCu(moiXep.map(l => l && l.id));
+            } catch (e) { ketQua.boLenhCu = []; }
+        }
 
         try {
             let lenh;

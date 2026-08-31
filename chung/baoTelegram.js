@@ -164,6 +164,34 @@ function soanTin(dong) {
     //
     // Đọc không ra giờ (`gio` rỗng) cũng coi là KHÁC -> vẫn hiện ngày, vì lúc
     // ấy không còn dòng nào mang ngày nữa.
+    // ── HAI CON SỐ TỪ SỔ KẾ TOÁN — chủ dự án chốt 31/08/2026 ───────────────
+    //
+    // Đặt TRƯỚC dòng "Lúc" để tin nhắn đọc theo thứ tự: xuất bao nhiêu, hôm nay
+    // bán được bao nhiêu, cả quý đã xuất bao nhiêu, rồi mới tới giờ.
+    //
+    // ⚠️ THIẾU SỐ THÌ NÓI THẲNG, KHÔNG IM LẶNG BỎ DÒNG — chủ dự án chốt. Bỏ
+    // dòng đi thì người đọc tưởng máy quên, không biết là Sell đang hỏng.
+    // `undefined` = không đi hỏi (tin cũ, chạy tay); `null` = có hỏi mà không ra.
+    //
+    // ⚠️ BA TRẠNG THÁI, KHÔNG PHẢI HAI. "Không đọc được" và "khách chưa được
+    // chọn trên trang Kế toán" là hai bệnh khác nhau, chữa hai cách khác nhau:
+    // một cái là Sell hỏng, một cái là chỉ cần đi tích thêm một ô. Đóng đinh
+    // chung một câu là người đọc chữa nhầm bệnh — đúng vết xe lượt 16:45 ngày
+    // 24/08/2026 (xem chú thích ở background.js).
+    const chuaChon = d.ngoai_bang_ke_toan === true;
+    const noSo = (v) => (chuaChon
+        ? 'khách chưa được chọn trên trang Kế toán tổng hợp'
+        : (v == null ? 'không đọc được' : chuTien(v)));
+
+    if (d.ds_hom_nay !== undefined) {
+        cac.push('Doanh thu hôm nay: ' + noSo(d.ds_hom_nay));
+    }
+    if (d.xhd_quy !== undefined) {
+        const ten = Array.isArray(d.quy_thang) && d.quy_thang.length
+            ? d.quy_thang.join('-') : '?';
+        cac.push(`Quý tháng ${ten}: ` + noSo(d.xhd_quy));
+    }
+
     const gio = chuGio(d.chay_luc);
     const ngay = chuNgay(d.ngay);
     if (ngay && ngay !== ngayTrongGio(gio)) cac.push(`Số liệu ngày: ${ngay}`);
@@ -223,6 +251,30 @@ function soanTinLuot(banGhi, luc) {
     // ⚠️ KÈM SỐ HIỆU BẢN. Ngày 22/08/2026 vá bốn đợt trong một ngày; đọc lại
     // tin cũ mà không biết nó do bản nào sinh ra thì luận bệnh trên cát.
     if (gio) cac.push(`Lúc: ${gio}` + (chuoi(b.banExt) ? ` · bản ${chuoi(b.banExt)}` : ''));
+    return cac.join('\n');
+}
+
+/**
+ * TIN BÁO LỆNH CŨ BỊ BỎ — chủ dự án chốt 31/08/2026.
+ *
+ * ⚠️ VÌ SAO PHẢI BÁO. Lệnh kẹt lại từ lượt trước là dấu hiệu MỘT LƯỢT ĐÃ BỊ LỠ:
+ * khách ấy đáng ra có hóa đơn mà không có. Im lặng dọn đi thì chủ dự án mất một
+ * tờ mà không biết vì sao — và trước ngày 31/08 thì còn tệ hơn, lệnh ấy tự ra
+ * hóa đơn vào giờ không ai hẹn.
+ */
+function soanTinBoLenhCu(dsBo, luc, moc) {
+    const ds = (Array.isArray(dsBo) ? dsBo : []).filter(Boolean);
+    const ten = ds.map(l => `${chuoi(l.tenKH) || chuoi(l.maKH)} (${chuTien(l.soTien)}đ)`)
+        .slice(0, 6);
+    const cac = [
+        '⚠️ ĐÃ BỎ lệnh còn sót từ lượt trước — KHÔNG xuất hóa đơn cho những lệnh này',
+        `Số lệnh bỏ: ${ds.length}` + (ten.length ? ` — ${ten.join('; ')}` : ''),
+        'Nghĩa là một lượt trước đó đã BỊ LỠ (thường do hai mốc giờ quá sát nhau, '
+            + 'lượt sau đụng khóa chống chạy chồng). Hãy giãn các mốc ra cách nhau '
+            + 'trên 5 phút, hoặc đặt trùng giờ hẳn.',
+    ];
+    const gio = chuGio(luc);
+    if (gio) cac.push(`Lúc: ${gio}` + (chuoi(moc) ? ` · mốc ${chuoi(moc)}` : ''));
     return cac.join('\n');
 }
 
@@ -600,7 +652,7 @@ async function baoCacDong({ cacDong, caiDat, kho, layFetch, luc }) {
 }
 
 const API = {
-    baoCacDong, baoLuot, soanTin, soanTinLuot, maLuot, nenBao, loaiTin,
+    baoCacDong, baoLuot, soanTin, soanTinLuot, soanTinBoLenhCu, maLuot, nenBao, loaiTin,
     chuGio, chuNgay, ngayTrongGio, donSo, LY_DO_YEN_A,
     gianhCho, traCho, guiTin, guiMotNoi, guiMotLan, tachChatId, guiThu, doChatId, docTraLoi,
     CHO_TOI_DA_GIAY, SO_LAN_THU_LAI,

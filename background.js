@@ -26,7 +26,12 @@ importScripts(
     'chung/docBangToken.js',
     'chung/baoTelegram.js',
     'chung/apDungSoDat.js',
+    'chung/docKeToanQuy.js',
 );
+
+// Bộ đọc hai con số cho tin nhắn Telegram, có nhớ ngắn hạn để một loạt nhiều
+// khách chỉ tốn MỘT lần gọi Sell.
+const docKeToanQuy = self.HDT_DocKeToanQuy.taoBoDoc();
 
 /** Tab mình tự mở thì tự dọn. Tab người dùng đang mở thì để nguyên. */
 function dongTabNeuTuMo(tab) {
@@ -350,6 +355,67 @@ const khoDaBaoTg = () => luuTru(self.HDT_BaoTelegram.KHOA_SO_DA_BAO);
  * Hàng chờ ấy được gửi lại nhiều lần cho tới khi Sell nhận được; bám vào đó là
  * mỗi lần gửi bù lại thêm một tin Telegram.
  */
+/**
+ * Gắn thêm DOANH THU HÔM NAY và TỔNG XUẤT HÓA ĐƠN CỦA QUÝ vào dòng sắp nhắn.
+ *
+ * ⛔ KHÔNG BAO GIỜ NÉM, và không bao giờ chặn tin nhắn. Đọc không được thì gắn
+ * `null` — `soanTin` sẽ ghi "không đọc được", chứ không lặng lẽ bỏ dòng.
+ *
+ * `undefined` (không gắn gì) dành cho đường KHÔNG đi hỏi; ở đây luôn gắn, kể cả
+ * khi hỏng, để người đọc biết là có hỏi mà không ra.
+ */
+/**
+ * Nhắn Telegram rằng có lệnh còn sót từ lượt trước và đã bị bỏ.
+ *
+ * ⛔ KHÔNG BAO GIỜ NÉM. Dùng chính sổ chống trùng của `baoTelegram` để một loạt
+ * lệnh bỏ chỉ nhắn ĐÚNG MỘT lần, kể cả khi lượt gửi lại ở cuối chạy thêm lần nữa.
+ */
+async function baoBoLenhCu(dsBo, moc) {
+    try {
+        const c = await khoCaiDat.doc();
+        const luc = Date.now();
+        const ma = 'bo-lenh-cu-' + (dsBo.map(l => l && l.id).sort().join(',') || luc);
+        if (!(await self.HDT_BaoTelegram.gianhCho(khoDaBaoTg(), ma, luc))) return;
+        const kq = await self.HDT_BaoTelegram.guiTin(
+            c, self.HDT_BaoTelegram.soanTinBoLenhCu(dsBo, luc, moc));
+        // Gửi hỏng thì TRẢ CHỖ để lượt sau còn thử lại — cùng kỷ luật với mọi
+        // đường báo khác trong dự án này.
+        if (!kq.ok) await self.HDT_BaoTelegram.traCho(khoDaBaoTg(), ma);
+    } catch (e) { /* cố ý nuốt */ }
+}
+
+async function themSoKeToan(dong) {
+    try {
+        // ⚠️ NHẬN CẢ MẢNG. Lưới an toàn cuối loạt gửi một mảng dòng; không lo
+        // nhánh ấy thì tin của nó thiếu hẳn hai dòng, và cùng một lượt chạy ra
+        // hai kiểu tin nhắn khác nhau tuỳ đường nào gửi được trước.
+        if (Array.isArray(dong)) {
+            const ra = [];
+            for (const x of dong) ra.push(await themSoKeToan(x));
+            return ra;
+        }
+        const c = await khoCaiDat.doc();
+        const ngay = String(dong.ngay || '') || self.HDT_HenGio.ngayVN();
+        const khoi = self.HDT_HenGio.khoiBaThang(ngay);
+        if (!khoi) return dong;
+        const kq = await docKeToanQuy(c, ngay, khoi);
+        const o = (kq.ok && kq.theoMa && kq.theoMa[String(dong.ma_khach_hang)]) || null;
+        // ⚠️ ĐỌC ĐƯỢC MÀ KHÔNG THẤY KHÁCH = khách chưa được tích trong "Chọn
+        // khách hiển thị" bên trang Kế toán (`apiBang` chỉ trả về khách ở đó).
+        // Khác hẳn "Sell hỏng" — và chữa cũng khác: chỉ cần đi tích thêm một ô.
+        const ngoaiBang = kq.ok && !o;
+        return {
+            ...dong,
+            quy_thang: khoi.thang,
+            ...(ngoaiBang ? { ngoai_bang_ke_toan: true } : {}),
+            ds_hom_nay: o && o.dsHomNay != null ? o.dsHomNay : null,
+            xhd_quy: o ? o.xhdQuy : null,
+        };
+    } catch (e) {
+        return dong;
+    }
+}
+
 async function baoTelegram(dongMoi) {
     try {
         if (!dongMoi) return null;
@@ -400,8 +466,18 @@ function taoMocDaySell(ngaySoLieu) {
     return (tienDo) => {
         try {
             const dong = self.HDT_DayVeSell.dongTuTienDo(tienDo, ngaySoLieu, Date.now());
-            if (dong) daySangSell(dong);      // cố ý KHÔNG await: đừng làm chậm loạt
-            if (dong) baoTelegram(dong);      // cũng KHÔNG await, cũng nuốt lỗi
+            if (!dong) return;
+            // ⚠️ THỨ TỰ CÓ Ý: ghi sổ Sell XONG rồi mới đi đọc hai con số cho tin
+            // nhắn — chủ dự án chốt 31/08/2026 là số quý phải GỒM CẢ TỜ VỪA
+            // XUẤT. Chạy song song như trước thì có lần kịp có lần không, và
+            // cùng một tình huống ra hai con số khác nhau.
+            //
+            // Vẫn KHÔNG await ở đây: cả chuỗi này bắn đi rồi trả về ngay, nên
+            // vòng phát hành hóa đơn không chậm thêm một giây nào.
+            (async () => {
+                await daySangSell(dong);
+                await baoTelegram(await themSoKeToan(dong));
+            })().catch(() => { /* việc phụ, nuốt lỗi */ });
         } catch (e) { /* cố ý nuốt */ }
     };
 }
@@ -437,7 +513,7 @@ async function ghiLichSu(banGhi) {
     // không tới. Sổ chống trùng lo phần không gửi lại cái đã gửi — và đây cũng
     // chính là LẦN THỬ LẠI của những tin vừa hỏng (chúng đã được trả chỗ).
     try {
-        await baoTelegram(self.HDT_DayVeSell.goiTuBanGhi(banGhi));
+        await baoTelegram(await themSoKeToan(self.HDT_DayVeSell.goiTuBanGhi(banGhi)));
     } catch (e) { /* cố ý nuốt */ }
 
     // ⚠️ TIN CẢ LƯỢT KHÔNG CHẠY. Lý do nằm ở TẦNG LƯỢT chứ không ở dòng khách
@@ -465,6 +541,15 @@ function banDangChay() {
 
 async function ghiKetQuaVaLichSu(o, trongLich) {
     await ghiKetQuaHen(o);
+    // ⚠️ BÁO LỆNH CŨ BỊ BỎ — chủ dự án chốt 31/08/2026. Đây là chỗ DUY NHẤT cả
+    // hai lối (hẹn giờ và chạy tay) đi qua, nên móc ở đây là đủ một lần.
+    //
+    // Lệnh kẹt lại nghĩa là MỘT LƯỢT ĐÃ BỊ LỠ — khách ấy đáng ra có hóa đơn mà
+    // không có. Im lặng dọn đi là chủ dự án mất một tờ không biết vì sao.
+    try {
+        const dsBo = (o.ketQua && o.ketQua.boLenhCu) || [];
+        if (dsBo.length) await baoBoLenhCu(dsBo, o.moc);
+    } catch (e) { /* việc phụ, nuốt lỗi */ }
     await ghiLichSu(self.HDT_LichSuChay.taoBanGhi({
         banExt: banDangChay(),
         nguon: o.nguon || self.HDT_LichSuChay.NGUON.HEN_GIO,

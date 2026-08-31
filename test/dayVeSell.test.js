@@ -383,11 +383,19 @@ test('⭐ chạy TAY cũng gửi từng khách', () => {
     assert.match(than.slice(0, 1500), /mocDaySellTay\(tienDo\)/);
 });
 
-test('⭐ móc gửi-từng-khách KHÔNG await — không được làm chậm loạt', () => {
+// ⚠️ BÀI NÀY TRƯỚC ĐÂY GHIM ĐÚNG MỘT DÒNG (`if (dong) daySangSell(dong);`).
+// Ngày 31/08/2026 móc ấy phải xếp lại thứ tự — ghi sổ Sell XONG rồi mới đọc số
+// quý cho tin nhắn, nên `await daySangSell` là CỐ Ý. Nhưng lời hứa "không làm
+// chậm loạt" vẫn phải còn: cái await ấy nằm trong khối chạy nền tự bắn đi, còn
+// hàm móc vẫn trả về ngay lập tức.
+test('⭐ móc gửi-từng-khách KHÔNG làm chậm loạt (việc chậm chạy nền)', () => {
     const ma = doc('background.js');
     const than = ma.slice(ma.indexOf('function taoMocDaySell'), ma.indexOf('const ghiKetQuaHen'));
-    assert.match(than, /if \(dong\) daySangSell\(dong\);/);
-    assert.ok(!/await daySangSell/.test(than), 'chờ gửi xong mới chạy khách sau — chậm vô ích');
+    assert.match(than, /daySangSell\(dong\)/, 'móc từng khách không đẩy sang Sell nữa');
+    assert.ok(!/return\s+async\s*\(/.test(than),
+        'hàm móc thành async -> vòng phát hành hóa đơn đứng đợi việc phụ');
+    assert.match(than, /\(async \(\) => \{[\s\S]*?\}\)\(\)/,
+        'việc chậm nằm thẳng trong hàm móc thay vì chạy nền');
     assert.match(than, /catch/, 'không nuốt lỗi');
 });
 

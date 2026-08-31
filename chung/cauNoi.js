@@ -192,7 +192,15 @@ function taoCauNoi({ timTabTendoo, guiToiTab, so, hangDoi, truocMoiKhach,
                 if (don.daXoa) bao({ loai: 'da-don-gio', soMon: don.daXoa, thongBao: don.thongBao });
             }
 
-            await hangDoi.xepHang(danhSach);
+            // ⚠️ XẾP HÀNG CÓ THỂ TỪ CHỐI. Từ 31/08/2026 nó giành khóa trước khi
+            // ghi lệnh: máy khác đang chạy thì KHÔNG ghi dòng nào vào sổ, và
+            // dừng ngay tại đây. Bản cũ ghi lệnh rồi mới biết khóa bận, để lại
+            // một đống lệnh CHỜ mà lượt sau gánh — hóa đơn ra vào giờ không hẹn.
+            const xep = await hangDoi.xepHang(danhSach);
+            if (xep && xep.ok === false) {
+                return { dung: true, ly_do: xep.ly_do || 'DANG_CHAY_CHO_KHAC',
+                         thongBao: xep.thongBao || 'Một cửa sổ khác đang chạy — đợi nó xong đã.' };
+            }
             const kq = await hangDoi.chayLoat(
                 async (lenh) => {
                     // Móc chạy TRƯỚC mỗi khách — nơi đổi tài khoản Tendoo nếu
@@ -230,6 +238,9 @@ function taoCauNoi({ timTabTendoo, guiToiTab, so, hangDoi, truocMoiKhach,
                     return tra;
                 },
                 (tin) => bao(tin),
+                // Danh sách lệnh CỦA CHÍNH LƯỢT NÀY, để hàng đợi biết cái nào là
+                // đồ còn sót từ lượt trước mà dọn đi.
+                xep.daXep,
             );
             return kq;
         } finally {

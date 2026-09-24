@@ -419,9 +419,13 @@ test('⭐ nền dựng lại báo thức cả khi Chrome vừa mở lại', () =
 test('⭐ nền CHỈ nhận báo thức của chính mình', () => {
     // Nhận bừa báo thức lạ = phát hành hóa đơn vì một cái hẹn không phải của mình.
     const ma = doc('background.js');
-    const doan = ma.slice(ma.indexOf('alarms.onAlarm'));
-    assert.match(doan.slice(0, 400), /mocTuTen/, 'không lọc tên báo thức');
-    assert.match(doan.slice(0, 400), /if\s*\(!moc\)\s*return/, 'không bỏ qua báo thức lạ');
+    // ⚠️ Cắt tới HẾT thân hàm, KHÔNG cắt theo số ký tự. Bản đầu lấy 400 ký tự
+    // đầu; thêm vài dòng phía trên là đoạn cần kiểm rơi ra ngoài cửa sổ và bài
+    // kiểm đỏ dù mã vẫn đúng. Tệ hơn nữa là ngày nào đó nó xanh vì lý do sai.
+    const dau = ma.indexOf('alarms.onAlarm');
+    const doan = ma.slice(dau, ma.indexOf('\n});', dau));
+    assert.match(doan, /mocTuTen/, 'không lọc tên báo thức');
+    assert.match(doan, /if\s*\(!moc\)\s*return/, 'không bỏ qua báo thức lạ');
 });
 
 test('⭐ nền đi qua cửa chặn duocChay TRƯỚC khi làm bất cứ gì', () => {

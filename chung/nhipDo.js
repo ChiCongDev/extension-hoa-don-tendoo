@@ -64,6 +64,11 @@ const NHIP_DO = {
     HAN_DOC_DANH_TINH: 30000,     // SAU đăng nhập: rỗng ở đây là LỖI -> chờ lâu
     HAN_DOC_TRUOC_KHI_DOI: 2500,  // TRƯỚC khi đổi: rỗng là bình thường (chưa
                                   // đăng nhập bao giờ) -> chờ lâu vô ích
+    // Chờ thanh công cụ trang Kế toán tổng hợp hiện ra để chèn nút "Doanh thu
+    // Tendoo". Không thấy sau chừng này thì THÔI — có thể Sell đã đổi giao
+    // diện. Thà thiếu một nút còn hơn treo một bộ theo dõi DOM suốt phiên làm
+    // việc của người dùng.
+    HAN_CHO_THANH_CONG_CU: 20000,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = NHIP_DO;

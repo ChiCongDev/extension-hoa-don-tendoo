@@ -114,7 +114,13 @@ test('chỉ chèn code vào ĐÚNG trang cần, không rải khắp nơi', () =>
     for (const cs of manifest.content_scripts) {
         for (const m of cs.matches) {
             assert.ok(!m.includes('<all_urls>'), 'chèn vào mọi trang — quá rộng');
-            assert.ok(/bao-cao-khach-hang|tendoo\.vn/.test(m), `match quá rộng: ${m}`);
+            // ⚠️ Danh sách TRẮNG, cố ý liệt kê từng trang một. Thêm trang mới
+            // thì phải sửa đúng dòng này — đó là chủ đích: mỗi lần nới ra phải
+            // là một quyết định có người nhìn, không phải chuyện lẳng lặng xảy
+            // ra. Rải mã vào cả bongtom.store là đọc được mọi trang của chủ dự
+            // án, kể cả những trang chẳng liên quan gì tới hóa đơn.
+            assert.ok(/bao-cao-khach-hang|ke-toan-tong-hop|tendoo\.vn/.test(m),
+                `match quá rộng: ${m}`);
         }
     }
 });

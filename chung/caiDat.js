@@ -109,6 +109,26 @@ function chuanSoTienNgay(v) {
  * chứ không phải ý thật. Trần 3650 (mười năm) để một cú gõ thừa số 0 không biến
  * thành cái hạn không bao giờ tới.
  */
+/**
+ * KHOẢNG CÁCH GIỮA HAI LẦN ĐỌC DOANH THU TENDOO, tính bằng phút.
+ *
+ * ⚠️ CHẶN DƯỚI 15 PHÚT. Mỗi lượt là một lời gọi thật sang Tendoo; để người
+ * dùng gõ "1" là máy quay vòng gõ cửa cả ngày rồi bị chặn tốc độ — lúc ấy hỏng
+ * lây sang việc XUẤT HÓA ĐƠN chứ không riêng việc đọc số. Gõ nhỏ hơn thì KÉO
+ * LÊN 15 chứ không bỏ hẳn: người dùng rõ ràng muốn lấy dày, chỉ là dày quá.
+ *
+ * Gõ sai hẳn (chữ, âm, rỗng) -> null, tức là dùng mặc định của bộ quét.
+ * Trần 7 ngày: lâu hơn nữa thì coi như tắt, mà tắt thì đã có ô tích riêng.
+ */
+function chuanPhutLayLai(v) {
+    if (v == null || v === '') return null;
+    const chu = String(v).trim();
+    if (!/^\d+$/.test(chu)) return null;
+    const so = Number(chu);
+    if (!Number.isInteger(so) || so <= 0 || so > 7 * 24 * 60) return null;
+    return so < 15 ? 15 : so;
+}
+
 function chuanSoNgay(v) {
     if (v == null || v === '') return null;
     const chu = String(v).trim();
@@ -219,6 +239,18 @@ function chuanKhach(ds, HenGio, gioChung, khachCu) {
             const batDau = giuMoc ? batDauCu : (HenGio ? HenGio.ngayVN() : '');
             if (batDau) o.batDauTuChon = batDau;
         }
+
+        // ── ĐỌC DOANH THU TENDOO — hoàn toàn TÁCH RỜI hai lịch xuất hóa đơn ──
+        //
+        // ⚠️ Đây là việc CHỈ ĐỌC, không phát hành gì. Cố ý không dính dáng gì
+        // tới `batHeThong`/`batTuChon`: khách đã tắt hẳn việc xuất hóa đơn vẫn
+        // có thể muốn theo dõi xem Tendoo bên đó đã phát hành bao nhiêu.
+        if (k && k.batDoanhThuTendoo === true) {
+            o.batDoanhThuTendoo = true;
+            const phut = chuanPhutLayLai(k && k.phutLayLai);
+            if (phut != null) o.phutLayLai = phut;
+        }
+
         ra.push(o);
     }
     return ra;
@@ -354,6 +386,7 @@ const khiDocHong = () => tuKho(null, false);
 const API = { chuanSoTienNgay, MAC_DINH, DUNG_SAI_MAC_DINH, DUNG_SAI_DANG_LO,
               TRAN_MOI_HOA_DON_MAC_DINH,
               chuanDungSai, chuanTranMoiHoaDon, chuanKhach, chuanChatId, chuanSoNgay,
+              chuanPhutLayLai,
               gop, tuKho, khiDocHong };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_CaiDat = API;

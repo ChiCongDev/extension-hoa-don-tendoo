@@ -19,6 +19,8 @@
 (function () {
 
 const DUONG_API = '/api/extension/hoa-don/ghi-nhan';
+// Doanh thu đọc NGƯỢC từ Tendoo — bảng riêng, đường riêng bên Sell.
+const DUONG_DOANH_THU_TENDOO = '/api/extension/hoa-don/doanh-thu-tendoo';
 
 /** Kết quả nào tính là ĐÃ RA HÓA ĐƠN THẬT. Chỉ đúng một cái. */
 const RA_HOA_DON = 'RA_HOA_DON';
@@ -194,7 +196,7 @@ function dongTuTienDo(tienDo, ngay, luc) {
  *
  * @returns {Promise<{ok:boolean, boQua?:string, thongBao?:string, soDong?:number}>}
  */
-async function guiCacDong(cacDong, caiDat, layFetch) {
+async function guiCacDong(cacDong, caiDat, layFetch, duongApi) {
     const c = caiDat || {};
     const url = String(c.sellUrl || '').trim().replace(/\/+$/, '');
     const token = String(c.sellToken || '').trim();
@@ -210,7 +212,10 @@ async function guiCacDong(cacDong, caiDat, layFetch) {
     if (!fetchDung) return { ok: false, boQua: 'KHONG_CO_FETCH' };
 
     try {
-        const tra = await fetchDung(url + DUONG_API, {
+        // Mặc định là đường ghi kết quả xuất hóa đơn. Truyền đường khác vào để
+        // dùng lại toàn bộ phần xử lý lỗi bên dưới (403 sai token, 404 sai địa
+        // chỉ) — hai đường cùng một cửa token, cùng một kiểu hỏng.
+        const tra = await fetchDung(url + (duongApi || DUONG_API), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -341,9 +346,25 @@ async function soDangCho(kho) {
     } catch (e) { return 0; }
 }
 
-const API = { dayVeSell, guiCacDong, goiTuBanGhi, dongTuTienDo, kieuXuatCua,
+/**
+ * Đẩy các dòng DOANH THU TENDOO sang Sell.
+ *
+ * ⚠️ ĐƯỜNG RIÊNG, bảng riêng bên Sell. Cố ý KHÔNG đi chung với kết quả xuất
+ * hóa đơn: đây là số đọc NGƯỢC từ Tendoo về để đối chiếu, trộn vào một chỗ là
+ * mất hẳn ý nghĩa đối chiếu.
+ *
+ * ⚠️ VIỆC PHỤ. Gửi hỏng thì chỉ mất số trên một cột; KHÔNG được phép ném lỗi
+ * ngược lên làm hỏng bất cứ việc gì khác.
+ */
+async function guiDoanhThuTendoo(cacDong, caiDat, layFetch) {
+    return guiCacDong(cacDong, caiDat, layFetch, DUONG_DOANH_THU_TENDOO);
+}
+
+const API = { dayVeSell, guiCacDong, guiDoanhThuTendoo, goiTuBanGhi,
+              dongTuTienDo, kieuXuatCua,
               themVaoCho, xepVaGui, soDangCho,
-              ngayISO, ngayMay, DUONG_API, KHOA_CHO_GUI, GIOI_HAN_CHO };
+              ngayISO, ngayMay, DUONG_API, DUONG_DOANH_THU_TENDOO,
+              KHOA_CHO_GUI, GIOI_HAN_CHO };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_DayVeSell = API;
 

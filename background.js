@@ -27,6 +27,13 @@ importScripts(
     'chung/baoTelegram.js',
     'chung/apDungSoDat.js',
     'chung/docKeToanQuy.js',
+    'chung/docTongTendoo.js',
+    'chung/khoThe.js',
+    'chung/dangNhapApi.js',
+    'chung/quetTendoo.js',
+    // Bộ nối API Tendoo — trước nay chỉ nạp trong content script. Phần nền
+    // cần nó để tự đọc doanh thu bằng thẻ đã cất, KHÔNG phải mở tab.
+    'tendoo/boNoi.js',
 );
 
 // Bộ đọc hai con số cho tin nhắn Telegram, có nhớ ngắn hạn để một loạt nhiều
@@ -63,6 +70,12 @@ async function docSoQuaToken(caiDat) {
 const KHOA_SO = 'hdt-so-ghi-dau';
 const KHOA_KHOA_CHAY = 'hdt-khoa-dang-chay';
 const KHOA_KHO_TAI_KHOAN = 'hdt-kho-tai-khoan';
+// ⛔ Kho THẺ RA VÀO Tendoo — bí mật ngang mật khẩu, xem chung/khoThe.js.
+const KHOA_KHO_THE = 'hdt-kho-the';
+// Lần quét doanh thu gần nhất theo từng khách: { [maKH]: mốc mili-giây }.
+const KHOA_QUET_TENDOO = 'hdt-quet-tendoo';
+// Id thiết bị ổn định cho đăng nhập API — tạo một lần, dùng mãi.
+const KHOA_DEVICE_ID = 'hdt-device-id';
 const KHOA_CAI_DAT = 'hdt-cai-dat-bang-thu';
 const KHOA_KET_QUA_HEN = 'hdt-ket-qua-hen-gio';
 const KHOA_DAY_SELL = 'hdt-day-ve-sell';
@@ -95,6 +108,9 @@ async function doiTrang(tabId, hop, hanMs) {
     }
     return null;
 }
+
+/** Kho thẻ ra vào Tendoo. ⛔ Nội dung là bí mật ngang mật khẩu. */
+const khoThe = () => self.HDT_KhoThe.taoKhoThe(luuTru(KHOA_KHO_THE));
 
 /**
  * Đọc mật khẩu Tendoo của một khách từ kho.
@@ -162,6 +178,7 @@ async function taoMocDoiTaiKhoan() {
         // doiTaiKhoan.canDoiTaiKhoan() để test được; chôn ở đây thì không bài
         // kiểm nào chạm tới.
         if (!self.HDT_DoiTaiKhoan.canDoiTaiKhoan(dangMo, banGhi.maCuaHang)) {
+            nhatTheCua(tabId, lenh.maKH, banGhi.maCuaHang);
             return null;
         }
         // Vẫn rỗng sau khi hỏi mãi -> coi như chưa đăng nhập, đi đăng nhập tiếp.
@@ -183,9 +200,211 @@ async function taoMocDoiTaiKhoan() {
             maKH: lenh.maKH, tenDangNhap: banGhi.tenDangNhap, matKhau,
             maCuaHangMongDoi: banGhi.maCuaHang,
         });
-        if (kq.ok) return null;
+        if (kq.ok) {
+            nhatTheCua(tabId, lenh.maKH, banGhi.maCuaHang);
+            return null;
+        }
         return { ok: false, ma: kq.ma, thongBao: kq.thongBao };
     };
+}
+
+/**
+ * Nhặt thẻ ra vào của phiên đang mở, cất vào kho để sau này đọc doanh thu.
+ *
+ * ⚠️ VIỆC PHỤ, KHÔNG ĐƯỢC CHỜ VÀ KHÔNG ĐƯỢC NÉM LỖI. Nó nằm ngay trên đường
+ * chạy của việc XUẤT HÓA ĐƠN THẬT — một lỗi ở đây mà lọt ra là làm lỡ hóa đơn
+ * của khách. Cho nên gọi rồi đi luôn, mọi thứ hỏng đều nuốt.
+ *
+ * ⚠️ ĐỐI CHIẾU CỬA HÀNG TRƯỚC KHI CẤT. Cất nhầm thẻ của khách A vào ô khách B
+ * là sau này đọc ra doanh thu của cửa hàng khác rồi ghi thẳng vào sổ kế toán —
+ * đúng kiểu lẫn lộn mà cả doiTaiKhoan.js sinh ra để chống.
+ *
+ * ⛔ KHÔNG ghi `the` ra log, ra thông báo, hay ra bất cứ đâu khác kho.
+ */
+function nhatTheCua(tabId, maKH, maCuaHangMongDoi) {
+    (async () => {
+        const t = await guiTab(tabId, { loai: 'hdt-nhat-the' });
+        if (!t || t.__loiGui || !t.ok || !t.the) return;
+        // Phép so nằm ở khoThe.cungCuaHang() để bài kiểm chạm tới được.
+        if (!self.HDT_KhoThe.cungCuaHang(t.maCuaHang, maCuaHangMongDoi)) return;
+        await khoThe().ghi(maKH, t.the);
+    })().catch(() => { /* việc phụ, nuốt hẳn */ });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  QUÉT DOANH THU TENDOO
+//
+//  ⛔⛔ LUẬT TUYỆT ĐỐI: phần này CHỈ ĐỌC và phải LUÔN NHƯỜNG việc xuất hóa đơn.
+//  Nó không giữ khóa chạy, không đụng sổ ghi dấu, không đổi tài khoản. Kết cục
+//  xấu nhất nó được phép gây ra là "cột Doanh thu Tendoo trống, có ghi lý do".
+// ════════════════════════════════════════════════════════════════════════════
+
+const TEN_CHUONG_QUET = 'hdt-quet-tendoo';
+// Chuông gõ đều; mỗi nhịp mới xét xem khách nào ĐẾN HẠN. Không phải cứ gõ là
+// quét — khoảng cách thật do người dùng đặt cho từng khách.
+const NHIP_CHUONG_QUET_PHUT = 5;
+
+/**
+ * Dựng bộ nối Tendoo chạy THẲNG TỪ PHẦN NỀN bằng thẻ đã cất.
+ *
+ * Đây là chỗ khiến cả tính năng nhẹ đi: không cần mở tab, không cần đổi tài
+ * khoản, nên không bao giờ chen ngang một lượt xuất hóa đơn đang chạy.
+ *
+ * Chưa có thẻ còn hạn -> null (KHÔNG tự đi đăng nhập ở đây).
+ */
+async function moBoNoiTheoThe(maKH) {
+    let the = await khoThe().doc(maKH);
+    // Chưa có thẻ còn hạn -> TỰ ĐĂNG NHẬP BẰNG API để lấy thẻ mới. Đây là chỗ
+    // khiến khách cả tháng không xuất hóa đơn vẫn có doanh thu: không cần đợi
+    // một lượt xuất hóa đơn đi ngang qua nữa.
+    if (!the) the = await layTheMoiQuaApi(maKH);
+    if (!the) return null;
+    return self.HDT_BoNoi
+        ? self.HDT_BoNoi.taoBoNoi({ layToken: async () => the })
+        : null;
+}
+
+/** Id thiết bị ỔN ĐỊNH của extension — tạo một lần, dùng mãi. */
+async function docDeviceId() {
+    const o = await luuTru(KHOA_DEVICE_ID).doc();
+    if (o && o.id) return o.id;
+    const id = 'hdt-' + ((globalThis.crypto && globalThis.crypto.randomUUID)
+        ? globalThis.crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    await luuTru(KHOA_DEVICE_ID).ghi({ id });
+    return id;
+}
+
+/**
+ * Đăng nhập một khách bằng API rồi cất thẻ. Trả thẻ, hoặc null nếu không được.
+ *
+ * ⛔ Đọc mật khẩu từ két NGAY TRƯỚC KHI dùng, không giữ lại. Không log, không
+ *    đưa vào thông báo.
+ *
+ * ⚠️ device_id ỔN ĐỊNH: Tendoo coi extension là MỘT thiết bị cố định, nên chỉ
+ *    "thấy thiết bị mới" đúng một lần cho mỗi khách chứ không phải mỗi lần đăng
+ *    nhập. Và vì device_id khác trình duyệt của chủ dự án, phiên này KHÔNG đá
+ *    phiên trên tab (đã kiểm: Tendoo cho nhiều phiên song song).
+ */
+async function layTheMoiQuaApi(maKH) {
+    try {
+        const k = await chrome.storage.local.get(KHOA_KHO_TAI_KHOAN);
+        const kho = k[KHOA_KHO_TAI_KHOAN];
+        const banGhi = kho && kho.khach && kho.khach[maKH];
+        if (!banGhi || !banGhi.tenDangNhap) return null;   // chưa khai báo -> chịu
+        const matKhau = await docMatKhauCua(kho, maKH);
+        if (!matKhau) return null;
+
+        const kq = await self.HDT_DangNhapApi.dangNhap({
+            tenDangNhap: banGhi.tenDangNhap,
+            matKhau,
+            deviceId: await docDeviceId(),
+        });
+        if (!kq.ok) return null;
+
+        // Cất qua kho thẻ — nó tự kiểm hạn dùng và tự tuần tự hóa.
+        await khoThe().ghi(maKH, kq.the);
+        return await khoThe().doc(maKH);
+    } catch (e) {
+        // ⛔ Việc phụ, nuốt hẳn. KHÔNG để lỗi lạ mang theo bí mật lọt ra ngoài.
+        return null;
+    }
+}
+
+/** Mốc quét gần nhất của từng khách. */
+async function docMocQuet() {
+    const o = await luuTru(KHOA_QUET_TENDOO).doc();
+    return (o && typeof o === 'object') ? o : {};
+}
+
+/**
+ * Một nhịp quét.
+ *
+ * @param {{batBuoc?:string[], soNgayLui?:number}} [tuyChon]
+ *        `batBuoc` = danh sách mã khách phải quét ngay bất kể đến hạn chưa
+ *        (nút "Lấy ngay"). `soNgayLui` > 1 để lấp số liệu quá khứ.
+ */
+async function quetDoanhThuTendoo(tuyChon = {}) {
+    const Q = self.HDT_QuetTendoo;
+    const c = await khoCaiDat.doc();
+    // ⚠️ Danh sách khách nằm ở `henGio.khach`, KHÔNG ở tầng ngoài. Đọc nhầm
+    // `c.khach` là luôn thấy rỗng, và cả tính năng im lặng không chạy mà
+    // không báo gì — đúng kiểu hỏng tệ nhất.
+    const khach = (c && c.henGio && Array.isArray(c.henGio.khach)) ? c.henGio.khach : [];
+    const batBuoc = new Set((tuyChon.batBuoc || []).map(x => String(x)));
+
+    // ⚠️ NHƯỜNG HẲN khi một lượt xuất hóa đơn đang chạy. Không phải vì tranh
+    // khóa — bộ này không đụng khóa — mà vì lượt xuất đang lái tab Tendoo và
+    // Tendoo có chặn tốc độ. Gọi chen vào lúc ấy là làm chậm chính việc quan
+    // trọng hơn. Bỏ nhịp này, nhịp sau quét bù, không mất gì.
+    const khoa = await luuTru(KHOA_KHOA_CHAY).doc();
+    if (khoa && Number(khoa.hetHanLuc) > Date.now()) {
+        return { boQua: 'DANG_XUAT_HOA_DON', daQuet: 0 };
+    }
+
+    const mocQuet = await docMocQuet();
+    const bayGio = Date.now();
+    const canQuet = khach.filter((k) => {
+        if (!k || !k.maKH) return false;
+        if (batBuoc.has(String(k.maKH))) return true;
+        if (k.batDoanhThuTendoo !== true) return false;
+        return Q.denLucQuet(mocQuet[k.maKH], k.phutLayLai, bayGio);
+    });
+    if (!canQuet.length) return { boQua: 'CHUA_DEN_HAN', daQuet: 0 };
+
+    // NGÀY CẦN LẤY:
+    //  · `ngayCanLay` truyền thẳng (nút Xem báo cáo tính sẵn: ngày thiếu trong
+    //    khoảng đang xem + hôm nay) -> dùng đúng danh sách đó.
+    //  · không thì lùi N ngày như cũ (quét định kỳ nền, mặc định hôm nay).
+    // Lọc ngày hợp lệ và chặn trần để một yêu cầu không nở ra vô hạn lời gọi.
+    let ngayCanLay;
+    if (Array.isArray(tuyChon.ngayCanLay)) {
+        ngayCanLay = tuyChon.ngayCanLay
+            .filter(x => /^\d{4}-\d{2}-\d{2}$/.test(String(x)));
+        // Nút "Xem báo cáo" chỉ gửi NGÀY THIẾU; hôm nay thì luôn lấy lại vì số
+        // trong ngày còn đổi. Nền tự thêm hôm nay (nó có ngayVN, content script
+        // thì không) — bỏ trùng để khỏi gọi hai lần.
+        if (tuyChon.themHomNay) {
+            const nay = self.HDT_HenGio.ngayVN();
+            if (!ngayCanLay.includes(nay)) ngayCanLay.push(nay);
+        }
+        ngayCanLay = ngayCanLay.slice(0, 400);
+    } else {
+        const soNgayLui = Math.max(1, Number(tuyChon.soNgayLui) || 1);
+        ngayCanLay = Q.cacNgayCanLay(self.HDT_HenGio.ngayVN(), soNgayLui);
+    }
+    if (!ngayCanLay.length) return { boQua: 'KHONG_CO_NGAY', daQuet: 0 };
+
+    const tatCaDong = [];
+    const mocMoi = { ...mocQuet };
+    for (const k of canQuet) {
+        let kq;
+        try {
+            kq = await Q.quetMotKhach({
+                khach: k, moBoNoi: moBoNoiTheoThe, ngayCanLay,
+            });
+        } catch (e) {
+            // ⛔ KHÔNG để thông báo lỗi mang theo thẻ. Lỗi lạ thì ghi chung
+            // chung, đừng dán nguyên văn thứ mình không kiểm soát được.
+            kq = { maKH: k.maKH, banGhi: [], heThong: 'LOI_LA' };
+        }
+        // Thẻ bị Tendoo từ chối -> vứt, để lượt xuất kế tiếp nhặt thẻ mới.
+        if (kq.heThong === 'THE_CHET') {
+            await khoThe().xoa(k.maKH).catch(() => {});
+        }
+        for (const d of kq.banGhi) tatCaDong.push(d);
+        mocMoi[k.maKH] = Date.now();
+    }
+
+    await luuTru(KHOA_QUET_TENDOO).ghi(mocMoi);
+
+    if (!tatCaDong.length) return { daQuet: canQuet.length, daGui: 0 };
+
+    let gui = { ok: false };
+    try {
+        gui = await self.HDT_DayVeSell.guiDoanhThuTendoo(tatCaDong, c);
+    } catch (e) { gui = { ok: false }; }
+
+    return { daQuet: canQuet.length, daGui: tatCaDong.length, gui };
 }
 
 /** Mở sổ ghi dấu, đã quét dấu sót lại. Dùng cho các việc KHÔNG chạy hàng loạt. */
@@ -299,6 +518,33 @@ async function dungLaiBaoThuc() {
         chrome.alarms.create(b.ten, { when: b.khi, periodInMinutes: 24 * 60 });
     }
     return { dungMay: lich.length, moc: lich.map(b => b.moc) };
+}
+
+/**
+ * Chuông quét doanh thu — TÁCH HẲN khỏi chuông xuất hóa đơn.
+ *
+ * ⚠️ Cố ý KHÔNG dựng chung trong `dungLaiBaoThuc`: hàm kia xóa sạch báo thức
+ * của mình rồi dựng lại theo lịch xuất hóa đơn, và người dùng TẮT lịch xuất
+ * hóa đơn là nó dừng hết. Việc đọc doanh thu phải sống độc lập — khách đã
+ * ngừng xuất hóa đơn vẫn có thể muốn theo dõi Tendoo bên đó phát hành bao nhiêu.
+ *
+ * Chuông gõ đều mỗi ít phút; mỗi nhịp mới xét khách nào ĐẾN HẠN theo khoảng
+ * riêng của họ. Chuông của Chrome chỉ nhận số phút, không hẹn được "mỗi khách
+ * một nhịp" — nên nhịp chung phải nhỏ hơn khoảng nhỏ nhất người dùng đặt được.
+ */
+async function dungChuongQuet() {
+    const c = await khoCaiDat.doc();
+    // Xem chú thích ở quetDoanhThuTendoo: khách nằm trong `henGio.khach`.
+    const khach = (c && c.henGio && Array.isArray(c.henGio.khach)) ? c.henGio.khach : [];
+    const coAiBat = khach.some(k => k && k.batDoanhThuTendoo === true);
+    if (!coAiBat) {
+        await chrome.alarms.clear(TEN_CHUONG_QUET);
+        return { bat: false };
+    }
+    chrome.alarms.create(TEN_CHUONG_QUET, {
+        delayInMinutes: 1, periodInMinutes: NHIP_CHUONG_QUET_PHUT,
+    });
+    return { bat: true, nhipPhut: NHIP_CHUONG_QUET_PHUT };
 }
 
 // ── ĐẨY KẾT QUẢ SANG SELL ───────────────────────────────────────────────────
@@ -787,6 +1033,16 @@ async function kiemTraThu() {
 }
 
 chrome.alarms.onAlarm.addListener((bao) => {
+    // ⚠️ CHUÔNG QUÉT DOANH THU — xét TRƯỚC, vì tên nó không phải một mốc giờ
+    // nên `mocTuTen` sẽ trả null và nhánh dưới bỏ qua mất.
+    //
+    // ⛔ Nuốt hẳn mọi lỗi: đây là việc CHỈ ĐỌC, hỏng thì chỉ trống một cột.
+    // Không bao giờ được để nó nổ lên làm ảnh hưởng chuông xuất hóa đơn.
+    if (bao && bao.name === TEN_CHUONG_QUET) {
+        quetDoanhThuTendoo().catch(() => {});
+        return;
+    }
+
     const moc = self.HDT_HenGio.mocTuTen(bao && bao.name);
     if (!moc) return;      // báo thức không phải của mình -> kệ
     chayTheoHen(moc).catch(e => ghiKetQuaHen({
@@ -800,10 +1056,14 @@ chrome.alarms.onAlarm.addListener((bao) => {
 chrome.runtime.onStartup.addListener(() => {
     dungLaiBaoThuc().catch(() => {});
     daySangSell().catch(() => {});
+    dungChuongQuet().catch(() => {});
+    // Dọn thẻ đã chết cho kho khỏi phình. Việc phụ, hỏng cũng kệ.
+    khoThe().donThe().catch(() => {});
 });
 chrome.runtime.onInstalled.addListener(() => {
     dungLaiBaoThuc().catch(() => {});
     daySangSell().catch(() => {});
+    dungChuongQuet().catch(() => {});
 });
 
 /**
@@ -916,10 +1176,48 @@ chrome.runtime.onMessage.addListener((tin, nguoiGui, traLoi) => {
                 // Lịch đổi thì báo thức phải dựng lại NGAY. Để lần sau mới dựng
                 // là người dùng bấm Lưu xong, tắt máy, và không có gì chạy cả.
                 const lich = await dungLaiBaoThuc();
+                // Ô tích "đọc doanh thu Tendoo" đổi thì chuông quét cũng phải
+                // dựng lại NGAY, y như lịch xuất hóa đơn. Đây là chuông RIÊNG,
+                // cố ý không nằm trong dungLaiBaoThuc — xem chú thích ở đó.
+                await dungChuongQuet().catch(() => {});
                 return { ...c, lich };
             })
             .then(c => traLoi({ ok: true, ...cheTokenTelegram(c) }))
             .catch(e => traLoi({ ok: false, thongBao: String(e && e.message) }));
+        return true;
+    }
+
+    // ── QUÉT DOANH THU TENDOO NGAY, không đợi đến hạn ───────────────────
+    //
+    // ⛔ CHỈ ĐỌC. Nút này không phát hành hóa đơn nào.
+    //
+    // `soNgayLui` cho phép lấp số liệu quá khứ — thứ mà cách đọc màn hình
+    // không làm được, vì API Tendoo nhận khoảng ngày bất kỳ.
+    if (tin.loai === 'hdt-quet-tendoo-ngay') {
+        quetDoanhThuTendoo({
+            batBuoc: Array.isArray(tin.maKH) ? tin.maKH : (tin.maKH ? [tin.maKH] : []),
+            soNgayLui: tin.soNgayLui,
+            // Nút "Xem báo cáo" tính sẵn danh sách ngày thiếu rồi truyền vào;
+            // themHomNay để nền lấy lại hôm nay dù đã có (số trong ngày còn đổi).
+            ngayCanLay: tin.ngayCanLay,
+            themHomNay: tin.themHomNay,
+        })
+            .then(kq => traLoi({ ok: true, ...kq }))
+            // ⛔ KHÔNG dán nguyên văn lỗi lạ ra đây: nó có thể mang theo thứ
+            // không nên hiện. Nói chung chung, chi tiết đã nằm trong cột.
+            .catch(() => traLoi({ ok: false, thongBao: 'Quét doanh thu Tendoo hỏng' }));
+        return true;
+    }
+
+    // Bảng cài đặt hỏi: khách nào đã có thẻ còn hạn để đọc doanh thu.
+    // ⛔ CHỈ trả mã khách và hạn dùng — KHÔNG BAO GIỜ trả chuỗi thẻ.
+    if (tin.loai === 'hdt-tinh-trang-the') {
+        // ⛔ Tên trường CỐ Ý KHÔNG phải `the`: một trường tên `the` trên đường
+        // truyền là mời người đọc sau này tưởng nó chứa chuỗi thẻ rồi đem đi
+        // hiện. Đây là TÌNH TRẠNG thẻ, không phải thẻ.
+        khoThe().lietKe()
+            .then(ds => traLoi({ ok: true, trangThaiThe: ds }))
+            .catch(() => traLoi({ ok: false, trangThaiThe: [] }));
         return true;
     }
 

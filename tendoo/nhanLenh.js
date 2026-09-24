@@ -688,6 +688,39 @@ if (typeof globalThis !== 'undefined') globalThis.HDT_NhanLenh = API;
             return true;
         }
 
+        // ── NHẶT THẺ RA VÀO CỦA PHIÊN ĐANG MỞ ───────────────────────────
+        //
+        // Phần nền cần thẻ để tự đọc doanh thu Tendoo mà KHÔNG phải mở tab và
+        // KHÔNG phải đổi tài khoản. Extension vốn đã đăng nhập từng khách mỗi
+        // ngày để xuất hóa đơn, nên chỉ việc nhặt thẻ lúc đi ngang qua.
+        //
+        // ⛔⛔ THẺ NGANG MẬT KHẨU. Trả về đúng một lần cho phần nền cất vào kho
+        //    (chung/khoThe.js) rồi thôi: KHÔNG in ra console, KHÔNG đưa vào
+        //    thông báo lỗi, KHÔNG hiện lên bảng nào.
+        //
+        // ⛔ CHỈ ĐỌC. Không bấm gì, không phát hành gì.
+        if (tin && tin.loai === 'hdt-nhat-the') {
+            (async () => {
+                try {
+                    const kho = G.HDT_BoNoi.taoDocKhoTrang(G);
+                    const the = await kho.layToken();
+                    // Kèm mã cửa hàng để phần nền ĐỐI CHIẾU trước khi cất: cất
+                    // nhầm thẻ của khách A vào ô khách B là đọc ra doanh thu
+                    // của cửa hàng khác rồi ghi vào sổ kế toán.
+                    let maCuaHang = '';
+                    try {
+                        const bn = G.HDT_BoNoi.taoBoNoi(kho);
+                        const dt = G.HDT_DanhTinh.doc(await bn.layPhien());
+                        maCuaHang = (dt && dt.maCuaHang) || '';
+                    } catch (e) { maCuaHang = ''; }
+                    traLoi({ ok: !!the, the: the || '', maCuaHang });
+                } catch (e) {
+                    traLoi({ ok: false, the: '', maCuaHang: '' });
+                }
+            })();
+            return true;
+        }
+
         // ── CHỤP GIAO DIỆN POS BẰNG CHỮ ─────────────────────────────────
         //
         // ⚠️ Ngày 22/08/2026 Tendoo thay giao diện và mọi khách hỏng cùng lúc.

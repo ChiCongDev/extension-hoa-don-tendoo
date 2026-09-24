@@ -252,8 +252,11 @@ test('⭐ số cột tiêu đề và số ô mỗi dòng KHỚP NHAU', () => {
     const soTh = (v.slice(dau, v.indexOf('</thead>', dau)).match(/<th /g) || []).length;
     const dong = v.slice(v.indexOf('return `<tr class="hover:bg-gray-50 cursor-pointer"'));
     const doan = dong.slice(0, dong.indexOf('</tr>'));
-    // ${oMa} và ${oTv} là hai ô dựng sẵn ở trên, không đếm được bằng "<td ".
-    const soTd = (doan.match(/<td /g) || []).length + 2;
+    // Có những ô DỰNG SẴN ở trên rồi chèn vào bằng ${...} — không đếm được
+    // bằng "<td ". ⚠️ Bản đầu cộng thêm một con số CỐ ĐỊNH (+2); thêm ô thứ ba
+    // (Doanh thu Tendoo) là bài kiểm đỏ dù mã đúng. Đếm thẳng số chỗ chèn.
+    const soChen = (doan.match(/\$\{o[A-Z]\w*\}/g) || []).length;
+    const soTd = (doan.match(/<td /g) || []).length + soChen;
     assert.strictEqual(soTd, soTh, `lệch cột: ${soTh} tiêu đề nhưng ${soTd} ô`);
 });
 

@@ -54,6 +54,15 @@ const DUONG = {
     sanPham: '/product/v2/products',
     hanMucHoaDon: '/process-invoice/api/v1/invoice-process/manage/warning-invoice-quota',
     tinhDon: '/pricing/api/v2/calculate-order',
+    // ⚠️ QUAN SÁT TRỰC TIẾP trên phiên thật ngày 2026-09-22, không lấy từ tài
+    // liệu (Tendoo không công bố tài liệu API nào cho bên ngoài).
+    //
+    // Đây là nguồn của BA Ô TỔNG ở đầu trang "Hóa đơn điện tử → Hóa đơn bán ra".
+    // Đã đối chiếu từng chữ số với màn hình cùng thời điểm:
+    //     TỔNG TIỀN ĐƠN HÀNG 167.790.000  = sum
+    //     TỔNG DOANH THU TRƯỚC THUẾ       = total_amount_after_discount
+    //     SỐ LƯỢNG 123                    = total_count
+    tongHoaDon: '/e-invoice/v2/invoices/summary',
 };
 
 class LoiTendoo extends Error {
@@ -192,7 +201,42 @@ function taoBoNoi(caiDat) {
         return json;
     }
 
+    /**
+     * TỔNG HÓA ĐƠN ĐÃ PHÁT HÀNH trong một khoảng ngày — JSON THÔ.
+     *
+     * ⚠️ CHỈ ĐỌC. Đường này không phát hành, không sửa, không hủy tờ nào.
+     *
+     * `tuISO`/`denISO` là mốc UTC. Gọi bên ngoài phải quy từ ngày Việt Nam sang
+     * (00:00 giờ VN = 17:00Z hôm trước) — chính trang Tendoo cũng gửi như vậy.
+     * Quy đổi KHÔNG làm ở đây vì bộ nối không được biết múi giờ là gì.
+     *
+     * Ba tham số dưới đây sao y lời gọi thật của trang, KHÔNG tự bịa:
+     *   list_status ["published"]  -> đúng tab "Đã phát hành"
+     *   filter_date_type "issued_date" -> tính theo NGÀY PHÁT HÀNH, không phải
+     *       ngày tạo đơn. Đây là điểm dễ sai nhất: một đơn tạo hôm qua mà phát
+     *       hành hôm nay thì thuộc về HÔM NAY, y như trang đang hiện.
+     *   reference_type ["order","ecom_order"]
+     *
+     * Trả JSON thô — việc bóc là của chung/docTongTendoo.js (Ranh giới 4).
+     */
+    async function layTongHoaDon(tuISO, denISO) {
+        return goi(DUONG.tongHoaDon, {
+            method: 'POST',
+            body: {
+                search: '',
+                start_time: String(tuISO),
+                end_time: String(denISO),
+                filter_date_type: 'issued_date',
+                sort: 'issued_date desc',
+                list_status: ['published'],
+                reference_type: ['order', 'ecom_order'],
+                buyer_status: null,
+            },
+        });
+    }
+
     return { goi, layPhien, goiTrangSanPham, layHanMucHoaDon, tinhTongTheoTendoo,
+             layTongHoaDon,
              GOC_API: gocApi, CO_TRANG, DUONG };
 }
 

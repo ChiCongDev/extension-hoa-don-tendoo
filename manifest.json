@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hoa don dien tu Tendoo - Sell",
-  "version": "2.40.0",
+  "version": "2.41.0",
   "description": "Tao hoa don dien tu tren Tendoo tu bao cao khach hang cua Sell. BAN 2.0: BO HAN KHOA MO - khai bao xong la chay duoc ngay, khong phai go lai sau khi mo Chrome hay tai lai extension. Doi lai: ai mo duoc ho so Chrome tren may nay la doc duoc mat khau Tendoo cua moi khach. Cong tac tu bam Thanh toan MAC DINH TAT - khi tat thi CHUA bam, CHUA tao hoa don nao.",
   "permissions": [
     "storage",
@@ -35,6 +35,18 @@
         "sell/epHomNay.js",
         "sell/oKhaiBao.js",
         "sell/chenCot.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://bongtom.store/ke-toan-tong-hop*",
+        "http://localhost:8000/ke-toan-tong-hop*",
+        "http://127.0.0.1:8000/ke-toan-tong-hop*"
+      ],
+      "js": [
+        "chung/nhipDo.js",
+        "sell/chenCotKeToan.js"
       ],
       "run_at": "document_idle"
     },

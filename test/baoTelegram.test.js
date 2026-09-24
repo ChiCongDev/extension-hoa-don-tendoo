@@ -857,7 +857,12 @@ test('⭐⭐ CẢ HAI tin cài đặt đều phải đi qua bộ che', () => {
     for (const tin of ['hdt-hoi-cai-dat', 'hdt-dat-cai-dat']) {
         const b = ma.indexOf(`tin.loai === '${tin}'`);
         assert.ok(b > 0, 'không thấy nhánh ' + tin);
-        const khuc = ma.slice(b, b + 900);
+        // ⚠️ Cắt tới HẾT nhánh (dòng `return true;` kết thúc nó), KHÔNG cắt
+        // theo số ký tự. Bản đầu lấy 900 ký tự; nhánh dài thêm ra là bài kiểm
+        // đỏ dù bộ che vẫn nguyên chỗ cũ.
+        const het = ma.indexOf('\n        return true;', b);
+        assert.ok(het > b, `không thấy chỗ kết thúc nhánh ${tin}`);
+        const khuc = ma.slice(b, het);
         assert.match(khuc, /cheTokenTelegram/, `nhánh ${tin} trả token ra ngoài`);
     }
 });

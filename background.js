@@ -369,7 +369,12 @@ async function quetDoanhThuTendoo(tuyChon = {}) {
         }
         ngayCanLay = ngayCanLay.slice(0, 400);
     } else {
-        const soNgayLui = Math.max(1, Number(tuyChon.soNgayLui) || 1);
+        // ⚠️ QUÉT ĐỊNH KỲ LẤY CẢ HÔM QUA — mặc định 2 ngày chứ không phải 1.
+        // Đây là lời hứa "đọc lại hôm qua để chốt sổ" trong bản chủ dự án duyệt
+        // 22/09 mà bản đầu BỎ SÓT. Không có nó thì hóa đơn phát hành sau lượt
+        // quét cuối cùng của một ngày sẽ mất khỏi cột vĩnh viễn (lỗi PA lệch
+        // 15.310.000, phát hiện 02/10/2026). Lấy hôm qua sau nửa đêm là chốt.
+        const soNgayLui = Math.max(2, Number(tuyChon.soNgayLui) || 2);
         ngayCanLay = Q.cacNgayCanLay(self.HDT_HenGio.ngayVN(), soNgayLui);
     }
     if (!ngayCanLay.length) return { boQua: 'KHONG_CO_NGAY', daQuet: 0 };
@@ -391,7 +396,18 @@ async function quetDoanhThuTendoo(tuyChon = {}) {
         if (kq.heThong === 'THE_CHET') {
             await khoThe().xoa(k.maKH).catch(() => {});
         }
-        for (const d of kq.banGhi) tatCaDong.push(d);
+        // Gắn MÃ CỬA HÀNG (đọc từ chính cái thẻ vừa dùng) vào mọi dòng có số,
+        // để Sell biết khách nào dùng chung cửa hàng mà khỏi cộng trùng ở hàng
+        // TỔNG. Không có thẻ (dòng lỗi) thì thôi — dòng lỗi không mang số.
+        let maCuaHang = null;
+        try {
+            const the = await khoThe().doc(k.maKH);
+            maCuaHang = self.HDT_KhoThe.cuaHangCuaThe(the);
+        } catch (e) { maCuaHang = null; }
+        for (const d of kq.banGhi) {
+            if (maCuaHang && !d.loi) d.ma_cua_hang = maCuaHang;
+            tatCaDong.push(d);
+        }
         mocMoi[k.maKH] = Date.now();
     }
 

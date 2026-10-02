@@ -298,18 +298,37 @@ async function khiXemBaoCao(tailieu) {
         const den = bang.thoi_gian.den_ngay_iso;
         const dtt = bang.doanh_thu_tendoo || {};
 
-        // Ngày ĐÃ CÓ ở BẤT KỲ khách bật nào -> khỏi lấy lại. Ngày còn thiếu ở
-        // ít nhất một khách thì lấy (nền ghi đè khách đã có, vô hại).
-        const daCo = new Set();
-        for (const id of Object.keys(dtt)) {
-            for (const ng of (dtt[id].ngay_da_co || [])) daCo.add(ng);
+        // Sell đánh số khách bằng khach_hang_id, extension bằng mã khách. Nối
+        // hai bên qua danh sách khách đang hiện trên báo cáo.
+        const idTheoMa = new Map();
+        for (const k of (Array.isArray(bang.khach) ? bang.khach : [])) {
+            if (k && k.ma_khach_hang) idTheoMa.set(String(k.ma_khach_hang), String(k.khach_hang_id));
         }
-        const ngayThieu = cacNgayTrong(tu, den).filter(ng => !daCo.has(ng));
+        // Chỉ khách VỪA BẬT VỪA ĐANG HIỆN: nút này phục vụ thứ anh đang nhìn.
+        // Khách bị ẩn vẫn được quét nền định kỳ lo.
+        const maQuet = maBat.filter(ma => idTheoMa.has(ma));
+        if (!maQuet.length) return;
+
+        // ⚠️ LỖI THẬT 02/10/2026 — bản trước dùng phép HỢP: bỏ qua một ngày nếu
+        // BẤT KỲ khách nào đã có, trái hẳn với chú thích viết ngay trên nó. Hậu
+        // quả: khách thiếu một ngày mà khách khác có rồi thì thiếu MÃI. Bài kiểm
+        // khi ấy chỉ dùng một khách nên hợp với giao ra cùng kết quả, không bắt.
+        //
+        // Đúng phải là GIAO: chỉ bỏ qua một ngày khi MỌI khách đang quét đều đã
+        // CHỐT ngày ấy. `ngay_da_co` từ Sell nay chỉ chứa ngày ĐÃ CHỐT (lấy sau
+        // lúc ngày kết thúc), không chứa ngày lấy dở lúc còn đang diễn ra.
+        const daChotCua = (ma) => {
+            const t = dtt[idTheoMa.get(ma)];
+            return new Set((t && Array.isArray(t.ngay_da_co)) ? t.ngay_da_co : []);
+        };
+        const chotTheoKhach = maQuet.map(daChotCua);
+        const ngayThieu = cacNgayTrong(tu, den)
+            .filter(ng => chotTheoKhach.some(tap => !tap.has(ng)));
 
         baoTrang(tailieu, 'Đang lấy doanh thu Tendoo…');
         const tra = await goiNen(tailieu, {
             loai: 'hdt-quet-tendoo-ngay',
-            maKH: maBat,
+            maKH: maQuet,
             ngayCanLay: ngayThieu,
             themHomNay: true,          // hôm nay luôn lấy lại, số trong ngày còn đổi
         });

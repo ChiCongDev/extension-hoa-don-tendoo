@@ -58,6 +58,27 @@ function khoangNgayVN(ngayISO) {
 }
 
 /**
+ * Số của một ngày đã CHỐT chưa — tức là lấy SAU lúc ngày ấy kết thúc (giờ VN).
+ *
+ * ⚠️ LỖI THẬT 02/10/2026: trước đây "đã có số" bị coi là "đã chốt". Lấy số lúc
+ * 8 giờ sáng thì chỉ được phần phát hành tới 8 giờ; sang hôm sau ngày ấy bị coi
+ * là xong và KHÔNG BAO GIỜ được lấy lại — loạt hóa đơn phát hành 09:31 ngày
+ * 23/09 của khách PA mất khỏi cột, lệch 15.310.000 so với Tendoo.
+ *
+ * Một ngày đã kết thúc thì tổng hóa đơn phát hành TRONG ngày ấy không tăng thêm
+ * được nữa (hóa đơn phát hành hôm sau thuộc về hôm sau). Nên lấy sau lúc kết
+ * thúc là chốt thật.
+ *
+ * Tính ở ĐÂY bằng UTC chứ không để máy chủ Sell tự tính: múi giờ của ứng dụng
+ * trên server đọc từ .env, mình không chắc bản trên Forge đặt gì.
+ */
+function daChot(ngayISO, luc) {
+    const kh = khoangNgayVN(ngayISO);
+    if (!kh) return false;
+    return Number(luc) > Date.parse(kh.den);
+}
+
+/**
  * Những ngày cần đi lấy cho một khách, mới nhất trước.
  *
  * `soNgayLui` cho phép lấp lại quá khứ: máy tắt mấy hôm thì hôm sau đòi lại
@@ -171,6 +192,7 @@ async function quetMotKhach({ khach, moBoNoi, ngayCanLay, dongHo }) {
     for (const ngay of ngayCanLay) {
         const kq = await docMotNgay(boNoi, ngay);
         if (kq.ok) {
+            const luc = (dongHo || Date.now)();
             banGhi.push({
                 ma_khach_hang: maKH,
                 ten_khach_hang: String((khach && khach.tenKH) || ''),
@@ -178,7 +200,8 @@ async function quetMotKhach({ khach, moBoNoi, ngayCanLay, dongHo }) {
                 doanh_thu_truoc_thue: kq.doanhThuTruocThue,
                 tong_tien_don_hang: kq.tongTienDonHang,
                 so_luong_hoa_don: kq.soLuong,
-                lay_luc: (dongHo || Date.now)(),
+                lay_luc: luc,
+                da_chot: daChot(ngay, luc),
             });
             continue;
         }
@@ -202,7 +225,7 @@ async function quetMotKhach({ khach, moBoNoi, ngayCanLay, dongHo }) {
 }
 
 const API = { khoangNgayVN, cacNgayCanLay, denLucQuet, docMotNgay,
-              quetMotKhach, PHUT_TOI_THIEU, LOI_DE_HIEU };
+              quetMotKhach, daChot, PHUT_TOI_THIEU, LOI_DE_HIEU };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 globalThis.HDT_QuetTendoo = API;

@@ -411,6 +411,66 @@ test('⭐⭐⭐ THÔNG BÁO LỖI không bao giờ mang theo thẻ', async () =>
     assert.ok(!chu.includes(the), 'thông báo lỗi làm rò thẻ vào cơ sở dữ liệu Sell');
 });
 
+ghiChu('── ĐÃ CHỐT hay CHỈ LÀ SỐ TẠM (lỗi thật 02/10/2026: PA lệch 15.310.000) ──');
+
+test('⭐⭐⭐ lấy LÚC NGÀY CÒN ĐANG DIỄN RA -> chưa chốt', () => {
+    // 23/09 lúc 08:00 giờ VN = 23/09 01:00Z. Ngày 23/09 chưa hết -> số tạm.
+    const luc = Date.UTC(2026, 8, 23, 1, 0, 0);
+    assert.strictEqual(Quet.daChot('2026-09-23', luc), false,
+        'số lấy lúc 8 giờ sáng mà bị coi là chốt -> hóa đơn phát hành sau 8 giờ mất vĩnh viễn');
+});
+
+test('⭐⭐⭐ lấy SAU khi ngày kết thúc -> đã chốt', () => {
+    // 24/09 00:00:01 giờ VN = 23/09 17:00:01Z -> 23/09 đã hết.
+    const luc = Date.UTC(2026, 8, 23, 17, 0, 1);
+    assert.strictEqual(Quet.daChot('2026-09-23', luc), true);
+});
+
+test('⭐⭐ đúng 23:59:59.999 giờ VN vẫn CHƯA chốt (sát nút không tính)', () => {
+    const luc = Date.parse(Quet.khoangNgayVN('2026-09-23').den);
+    assert.strictEqual(Quet.daChot('2026-09-23', luc), false,
+        'đúng giây cuối mà coi là chốt -> có thể sót tờ phát hành trong mili-giây cuối');
+    assert.strictEqual(Quet.daChot('2026-09-23', luc + 1), true);
+});
+
+test('⭐⭐ ngày hỏng -> không chốt (không đoán bừa)', () => {
+    assert.strictEqual(Quet.daChot('bậy', Date.now()), false);
+});
+
+test('⭐⭐⭐ dòng lấy được mang cờ da_chot ĐÚNG theo giờ lấy', async () => {
+    const bn = boNoiGia(PHAN_HOI_THAT);
+    // Lấy hôm nay (đang diễn ra) và hôm qua (đã hết) cùng lúc 10:00 ngày 23/09.
+    const luc = Date.UTC(2026, 8, 23, 3, 0, 0);
+    const kq = await Quet.quetMotKhach({
+        khach: { maKH: 'c?ng' }, moBoNoi: async () => bn,
+        ngayCanLay: ['2026-09-23', '2026-09-22'], dongHo: () => luc,
+    });
+    const theoNgay = Object.fromEntries(kq.banGhi.map(b => [b.ngay, b.da_chot]));
+    assert.strictEqual(theoNgay['2026-09-23'], false, 'hôm nay chưa hết mà bị đánh dấu chốt');
+    assert.strictEqual(theoNgay['2026-09-22'], true, 'hôm qua đã hết mà không đánh dấu chốt');
+});
+
+ghiChu('── MÃ CỬA HÀNG TRONG THẺ (khách dùng chung cửa hàng) ──');
+
+/** Thẻ giả có thêm trường tùy ý trong phần giữa. */
+function theGiaCo(expGiay, them) {
+    const than = Buffer.from(JSON.stringify({ exp: expGiay, ...them }), 'utf8')
+        .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return 'eyJhbGciOiJIUzI1NiJ9.' + than + '.chu-ky-rac';
+}
+
+test('⭐⭐⭐ đọc đúng business_id ghi trong thẻ', () => {
+    const the = theGiaCo(9999999999, { business_id: '2c683a17-09ab-4655-8dbf-50ca8105373c' });
+    assert.strictEqual(KhoThe.cuaHangCuaThe(the), '2c683a17-09ab-4655-8dbf-50ca8105373c');
+});
+
+test('⭐⭐ thẻ không có / có business_id lạ -> null, không nhận rác', () => {
+    assert.strictEqual(KhoThe.cuaHangCuaThe(theGiaCo(9999999999, {})), null);
+    assert.strictEqual(KhoThe.cuaHangCuaThe(theGiaCo(9999999999, { business_id: 'x"; DROP' })), null);
+    assert.strictEqual(KhoThe.cuaHangCuaThe(theGiaCo(9999999999, { business_id: 123 })), null);
+    assert.strictEqual(KhoThe.cuaHangCuaThe('khong-phai-the'), null);
+});
+
 ghiChu('── LẤP SỐ LIỆU QUÁ KHỨ ──');
 
 test('⭐⭐ cacNgayCanLay: mới nhất trước, đủ số ngày', () => {
@@ -714,6 +774,12 @@ function guiTin(tin) {
 }
 
 const NEN = napNen();
+
+// ⚠️ KHÓA CÀI ĐẶT THẬT của phần nền. Bản trước của bài kiểm này ghi vào 'hdt-cai-dat' —
+// một khóa KHÔNG AI ĐỌC. Các bài vẫn xanh chỉ vì một bài chạy sớm hơn đã lưu cài
+// đặt qua cửa thật — xanh vì lý do sai, phát hiện 02/10/2026. Lấy thẳng từ mã nền
+// để không bao giờ trôi lệch nữa.
+const KHOA_CAI_DAT = /const KHOA_CAI_DAT = '([^']+)'/.exec(doc('background.js'))[1];
 const nhuongNhip = async (n = 30) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
 
 test('⭐⭐⭐ chuông quét mang tên KHÔNG bị dungLaiBaoThuc xóa nhầm', async () => {
@@ -797,7 +863,7 @@ test('⭐⭐⭐ nền QUÉT ĐÚNG những ngày được truyền vào (ngayCan
     await KhoMatKhau.ghiKhach(kho, mo.khoa, 'c?ng', {
         maCuaHang: 'CH', tenDangNhap: '+8490', matKhau: 'mk' });
     NEN.kho['hdt-kho-tai-khoan'] = kho;
-    NEN.kho['hdt-cai-dat'] = { henGio: { bat: true, moc: [],
+    NEN.kho[KHOA_CAI_DAT] = { henGio: { bat: true, moc: [],
         khach: [{ maKH: 'c?ng', tenKH: 'Công', batDoanhThuTendoo: true }] } };
     delete NEN.kho['hdt-kho-the'];
     delete NEN.kho['hdt-quet-tendoo'];
@@ -824,6 +890,80 @@ test('⭐⭐⭐ nền QUÉT ĐÚNG những ngày được truyền vào (ngayCan
         'nền không quét đúng các ngày được truyền -> cột không khớp mốc');
 });
 
+/**
+ * Chạy một lượt quét QUA PHẦN NỀN THẬT, bắt lại mọi lời gọi ra ngoài: ngày
+ * nào được hỏi Tendoo, và dòng nào được gửi về Sell.
+ */
+async function chayQuetBatHet({ thePhat, tinQuet }) {
+    const KhoMatKhau = require('../chung/khoMatKhau');
+    const kho = await KhoMatKhau.taoKho();
+    const mo = await KhoMatKhau.moKho(kho);
+    await KhoMatKhau.ghiKhach(kho, mo.khoa, 'c?ng', {
+        maCuaHang: 'CH', tenDangNhap: '+8490', matKhau: 'mk' });
+    NEN.kho['hdt-kho-tai-khoan'] = kho;
+    NEN.kho[KHOA_CAI_DAT] = { sellUrl: 'http://sell.thu', sellToken: 'tk',
+        henGio: { bat: true, moc: [],
+                  khach: [{ maKH: 'c?ng', tenKH: 'Công', batDoanhThuTendoo: true }] } };
+    delete NEN.kho['hdt-kho-the'];
+    delete NEN.kho['hdt-quet-tendoo'];
+    const ngayHoi = [];
+    let guiSell = null;
+    globalThis.fetch = async (url, o) => {
+        const u = String(url);
+        if (u.includes('/auth/login'))
+            return { ok: true, status: 200, json: async () => ({ data: { access_token: thePhat } }) };
+        if (u.includes('/invoices/summary')) {
+            ngayHoi.push(JSON.parse(o.body).start_time);
+            return { ok: true, status: 200, json: async () => PHAN_HOI_THAT };
+        }
+        if (u.includes('/doanh-thu-tendoo')) {
+            guiSell = JSON.parse(o.body);
+            return { ok: true, status: 200, json: async () => ({ thanh_cong: true }) };
+        }
+        return { ok: false, status: 404, json: async () => ({}) };
+    };
+    let traLoi = null;
+    try {
+        traLoi = await guiTin(tinQuet);
+    } finally {
+        delete globalThis.fetch; delete NEN.kho['hdt-kho-tai-khoan'];
+        delete NEN.kho['hdt-kho-the']; delete NEN.kho[KHOA_CAI_DAT];
+    }
+    return { ngayHoi, guiSell, traLoi };
+}
+
+test('⭐⭐⭐ dòng gửi về Sell mang MÃ CỬA HÀNG đọc từ chính cái thẻ', async () => {
+    // Không có mã cửa hàng thì Sell không biết hai khách dùng chung cửa hàng,
+    // và hàng TỔNG cộng trùng (bảng tháng 9: 276.900.000 bị cộng hai lần).
+    const the = theGiaCo(Math.floor((Date.now() + 20 * 864e5) / 1000),
+                         { business_id: 'cua-hang-chung-01' });
+    const { guiSell } = await chayQuetBatHet({ thePhat: the,
+        tinQuet: { loai: 'hdt-quet-tendoo-ngay', maKH: ['c?ng'],
+                   ngayCanLay: ['2026-07-01'], themHomNay: false } });
+    assert.ok(guiSell && Array.isArray(guiSell.ban_ghi), 'không gửi gì về Sell');
+    const dong = guiSell.ban_ghi.find(b => b.ngay === '2026-07-01');
+    assert.ok(dong, 'thiếu dòng ngày 01/07');
+    assert.strictEqual(dong.ma_cua_hang, 'cua-hang-chung-01',
+        'dòng không mang mã cửa hàng -> Sell cộng trùng khách dùng chung cửa hàng');
+    // Ngày 01/07 đã qua từ lâu -> phải đánh dấu chốt.
+    assert.strictEqual(dong.da_chot, true, 'ngày đã qua mà không đánh dấu chốt');
+});
+
+test('⭐⭐⭐ quét định kỳ lấy CẢ HÔM QUA để chốt sổ (lời hứa 22/09 bị bỏ sót)', async () => {
+    // Không truyền ngayCanLay -> đường quét định kỳ. Phải hỏi 2 ngày: hôm nay
+    // và hôm qua. Chỉ hỏi hôm nay là hóa đơn phát hành sau lượt quét cuối cùng
+    // của một ngày mất khỏi cột vĩnh viễn.
+    const the = theGiaCo(Math.floor((Date.now() + 20 * 864e5) / 1000), { business_id: 'ch-1' });
+    const { ngayHoi } = await chayQuetBatHet({ thePhat: the,
+        tinQuet: { loai: 'hdt-quet-tendoo-ngay', maKH: ['c?ng'] } });
+    assert.strictEqual(ngayHoi.length, 2,
+        `quét định kỳ hỏi ${ngayHoi.length} ngày -> không đọc lại hôm qua để chốt sổ`);
+    const homNay = HenGio.ngayVN();
+    const homQua = HenGio.congNgay(homNay, -1);
+    const daHoi = ngayHoi.map(st => new Date(Date.parse(st) + 7 * 3600e3).toISOString().slice(0, 10)).sort();
+    assert.deepStrictEqual(daHoi, [homQua, homNay].sort(), 'không đúng hôm nay + hôm qua');
+});
+
 test('⭐⭐⭐ bộ quét NHƯỜNG khi khóa xuất hóa đơn đang giữ', async () => {
     NEN.kho['hdt-khoa-dang-chay'] = { mayId: 'ai-do', hetHanLuc: Date.now() + 600000 };
     const kq = await guiTin({ loai: 'hdt-quet-tendoo-ngay', maKH: ['c?ng'] });
@@ -843,7 +983,7 @@ test('⭐⭐⭐ chưa có thẻ nhưng CÓ tài khoản -> TỰ ĐĂNG NHẬP AP
     await KhoMatKhau.ghiKhach(kho, mo.khoa, 'c?ng', {
         maCuaHang: 'CH-CONG', tenDangNhap: '+84379215004', matKhau: 'mk-thu-cong' });
     NEN.kho['hdt-kho-tai-khoan'] = kho;
-    NEN.kho['hdt-cai-dat'] = { henGio: { bat: true, moc: [],
+    NEN.kho[KHOA_CAI_DAT] = { henGio: { bat: true, moc: [],
         khach: [{ maKH: 'c?ng', tenKH: 'Công', batDoanhThuTendoo: true }] } };
     delete NEN.kho['hdt-kho-the'];
 
@@ -888,7 +1028,7 @@ test('⭐⭐ device_id ỔN ĐỊNH — hai lần đăng nhập mang cùng một
     await KhoMatKhau.ghiKhach(kho, mo.khoa, 'c?ng', {
         maCuaHang: 'CH-CONG', tenDangNhap: '+84379215004', matKhau: 'mk' });
     NEN.kho['hdt-kho-tai-khoan'] = kho;
-    NEN.kho['hdt-cai-dat'] = { henGio: { bat: true, moc: [],
+    NEN.kho[KHOA_CAI_DAT] = { henGio: { bat: true, moc: [],
         khach: [{ maKH: 'c?ng', tenKH: 'Công', batDoanhThuTendoo: true }] } };
     delete NEN.kho['hdt-device-id'];
     const theMoi = theGia(Math.floor((Date.now() + 20 * 864e5) / 1000));
@@ -921,7 +1061,7 @@ test('⭐⭐⭐ khách chưa có thẻ -> ghi dòng lỗi, KHÔNG xuất hóa đ
     // tuyệt đối không có lệnh xuất hóa đơn nào được sinh ra.
     delete NEN.kho['hdt-kho-tai-khoan'];
     delete NEN.kho['hdt-kho-the'];
-    NEN.kho['hdt-cai-dat'] = { henGio: { bat: true, moc: [],
+    NEN.kho[KHOA_CAI_DAT] = { henGio: { bat: true, moc: [],
         khach: [{ maKH: 'c?ng', tenKH: 'Công', batDoanhThuTendoo: true }] } };
     const kq = await guiTin({ loai: 'hdt-quet-tendoo-ngay', maKH: ['c?ng'] });
     assert.ok(kq && kq.ok, 'lệnh quét không trả lời');
@@ -997,7 +1137,7 @@ test('⭐⭐⭐ cacNgayTrong liệt kê đúng các ngày trong khoảng', () =>
  * Trả về mọi tin đã gửi lên nền để soi lệnh quét.
  */
 function dungTrangXem({ ky = 'tuy_chon', tu = '2026-09-20', den = '2026-09-23',
-                        ngayDaCo = {}, khachBat = ['c?ng'] } = {}) {
+                        ngayDaCo = {}, khachBat = ['c?ng'], khachHienTren = null } = {}) {
     const dom = new JSDOM('<!doctype html><html><body>'
         + '<select id="ktKy"><option value="tuy_chon" selected>Tùy chọn</option></select>'
         + `<input id="ktTuNgay" value="${tu}">`
@@ -1007,11 +1147,19 @@ function dungTrangXem({ ky = 'tuy_chon', tu = '2026-09-20', den = '2026-09-23',
         + '<button>Xuất CSV</button></body></html>');
     const cua = dom.window;
     const daGui = [];
+    let soQuetXem = 0;
+    // Hình dạng THẬT của api/bang: Sell đánh số khách bằng khach_hang_id, kèm
+    // ma_khach_hang (= mã khách bên extension). Mặc định khách bật đều đang hiện.
+    const hien = khachHienTren || [...new Set([...khachBat, ...Object.keys(ngayDaCo)])];
+    const khachSell = hien.map((ma, i) => ({ khach_hang_id: 100 + i, ma_khach_hang: ma }));
     const dtt = {};
-    for (const [id, ds] of Object.entries(ngayDaCo)) dtt[id] = { ngay_da_co: ds };
+    for (const k of khachSell) {
+        dtt[k.khach_hang_id] = { ngay_da_co: ngayDaCo[k.ma_khach_hang] || [] };
+    }
     cua.fetch = async () => ({ ok: true, json: async () => ({
         thanh_cong: true,
         thoi_gian: { tu_ngay_iso: tu, den_ngay_iso: den },
+        khach: khachSell,
         doanh_thu_tendoo: dtt,
     }) });
     cua.chrome = { runtime: { sendMessage: async (tin) => {
@@ -1019,7 +1167,11 @@ function dungTrangXem({ ky = 'tuy_chon', tu = '2026-09-20', den = '2026-09-23',
         if (tin.loai === 'hdt-hoi-cai-dat') {
             return { henGio: { khach: khachBat.map(m => ({ maKH: m, batDoanhThuTendoo: true })) } };
         }
-        if (tin.loai === 'hdt-quet-tendoo-ngay') return { ok: true, daQuet: 1, daGui: 1 };
+        // Tự ngắt sau 3 lượt: khi lỗi vòng lặp xuất hiện, không ngắt là tiến trình quay mãi.
+        if (tin.loai === 'hdt-quet-tendoo-ngay') {
+            soQuetXem++;
+            return soQuetXem > 3 ? { ok: false } : { ok: true, daQuet: 1, daGui: 1 };
+        }
         return { ok: true };
     } } };
     ChenCotKeToan.ganXemBaoCao(cua.document);
@@ -1045,6 +1197,43 @@ test('⭐⭐⭐ bấm "Xem báo cáo" -> quét đúng NGÀY THIẾU + hôm nay',
         'lấy lại cả ngày đã có -> dội Tendoo; hoặc bỏ sót ngày thiếu');
     assert.strictEqual(quet.themHomNay, true, 'không lấy lại hôm nay -> số hôm nay cũ');
     assert.deepStrictEqual(quet.maKH, ['c?ng']);
+});
+
+test('⭐⭐⭐ NHIỀU KHÁCH: một khách thiếu ngày thì PHẢI lấy, dù khách khác đã có', async () => {
+    // ⚠️ LỖI THẬT 02/10/2026: bản trước dùng phép HỢP — ngày nào BẤT KỲ khách
+    // nào có rồi là bỏ qua. c?ng có đủ 20-22, ki?n chỉ có 20 -> với phép hợp,
+    // 21 và 22 bị bỏ, ki?n thiếu MÃI. Bài kiểm cũ chỉ một khách nên không bắt.
+    const { cua, tailieu, daGui } = dungTrangXem({
+        tu: '2026-09-20', den: '2026-09-22', khachBat: ['c?ng', 'ki?n'],
+        ngayDaCo: { 'c?ng': ['2026-09-20', '2026-09-21', '2026-09-22'],
+                    'ki?n': ['2026-09-20'] } });
+    tailieu.getElementById('ktXem').click();
+    await doiNhip(cua);
+    const quet = daGui.find(t => t.loai === 'hdt-quet-tendoo-ngay');
+    assert.ok(quet, 'không gửi lệnh quét');
+    assert.deepStrictEqual(quet.ngayCanLay.slice().sort(), ['2026-09-21', '2026-09-22'],
+        'bỏ qua ngày ki?n còn thiếu chỉ vì c?ng đã có -> ki?n thiếu số mãi');
+});
+
+test('⭐⭐⭐ NHIỀU KHÁCH: ngày MỌI khách đều đã chốt thì bỏ qua', async () => {
+    const { cua, tailieu, daGui } = dungTrangXem({
+        tu: '2026-09-20', den: '2026-09-21', khachBat: ['c?ng', 'ki?n'],
+        ngayDaCo: { 'c?ng': ['2026-09-20', '2026-09-21'],
+                    'ki?n': ['2026-09-20', '2026-09-21'] } });
+    tailieu.getElementById('ktXem').click();
+    await doiNhip(cua);
+    const quet = daGui.find(t => t.loai === 'hdt-quet-tendoo-ngay');
+    assert.deepStrictEqual(quet.ngayCanLay, [], 'cả hai đã chốt mà vẫn lấy lại -> dội Tendoo');
+});
+
+test('⭐⭐ khách BẬT nhưng đang ẨN trên báo cáo -> nút Xem không quét khách ấy', async () => {
+    // Nút này phục vụ thứ đang nhìn; khách ẩn đã có quét nền lo.
+    const { cua, tailieu, daGui } = dungTrangXem({
+        khachBat: ['c?ng', 'ki?n'], khachHienTren: ['c?ng'] });
+    tailieu.getElementById('ktXem').click();
+    await doiNhip(cua);
+    const quet = daGui.find(t => t.loai === 'hdt-quet-tendoo-ngay');
+    assert.deepStrictEqual(quet.maKH, ['c?ng'], 'quét cả khách đang ẩn');
 });
 
 test('⭐⭐⭐ mọi ngày đã có -> vẫn quét (nhờ themHomNay lấy lại hôm nay)', async () => {
@@ -1076,6 +1265,7 @@ test('⭐⭐⭐ chỉ quét khách ĐÃ BẬT, bỏ khách tắt', async () => {
     const daGui = [];
     cua.fetch = async () => ({ ok: true, json: async () => ({
         thoi_gian: { tu_ngay_iso: '2026-09-23', den_ngay_iso: '2026-09-23' },
+        khach: [{ khach_hang_id: 1, ma_khach_hang: 'c?ng' }, { khach_hang_id: 2, ma_khach_hang: 'ki?n' }, { khach_hang_id: 3, ma_khach_hang: 'hoa' }],
         doanh_thu_tendoo: {} }) });
     cua.chrome = { runtime: { sendMessage: async (tin) => {
         daGui.push(tin);
@@ -1084,6 +1274,11 @@ test('⭐⭐⭐ chỉ quét khách ĐÃ BẬT, bỏ khách tắt', async () => {
             { maKH: 'ki?n', batDoanhThuTendoo: false },   // TẮT
             { maKH: 'hoa' },                               // chưa đặt = tắt
         ] } };
+        // Tự ngắt sau 3 lượt quét (chống treo khi lỗi vòng lặp xuất hiện).
+        if (tin.loai === 'hdt-quet-tendoo-ngay') {
+            const n = daGui.filter(t => t.loai === 'hdt-quet-tendoo-ngay').length;
+            return n > 3 ? { ok: false } : { ok: true };
+        }
         return { ok: true };
     } } };
     ChenCotKeToan.ganXemBaoCao(cua.document);
@@ -1107,10 +1302,15 @@ test('⭐⭐⭐ bấm DỒN khi đang quét -> chỉ quét MỘT lần', async (
     const cua = dom.window;
     cua.fetch = async () => ({ ok: true, json: async () => ({
         thoi_gian: { tu_ngay_iso: '2026-09-23', den_ngay_iso: '2026-09-23' },
+        khach: [{ khach_hang_id: 1, ma_khach_hang: 'c?ng' }],
         doanh_thu_tendoo: {} }) });
     cua.chrome = { runtime: { sendMessage: async (tin) => {
         if (tin.loai === 'hdt-hoi-cai-dat') return { henGio: { khach: [{ maKH: 'c?ng', batDoanhThuTendoo: true }] } };
-        if (tin.loai === 'hdt-quet-tendoo-ngay') { lanQuet++; await choQuet; return { ok: true, daQuet: 1 }; }
+        if (tin.loai === 'hdt-quet-tendoo-ngay') {
+            lanQuet++;
+            await choQuet;
+            return lanQuet > 3 ? { ok: false } : { ok: true, daQuet: 1 };
+        }
         return { ok: true };
     } } };
     ChenCotKeToan.ganXemBaoCao(cua.document);
@@ -1133,10 +1333,20 @@ test('⭐⭐⭐ lần bấm để LÀM MỚI (do mình) KHÔNG quét lại -> ch
     const cua = dom.window;
     cua.fetch = async () => ({ ok: true, json: async () => ({
         thoi_gian: { tu_ngay_iso: '2026-09-23', den_ngay_iso: '2026-09-23' },
+        khach: [{ khach_hang_id: 1, ma_khach_hang: 'c?ng' }],
         doanh_thu_tendoo: {} }) });
     cua.chrome = { runtime: { sendMessage: async (tin) => {
         if (tin.loai === 'hdt-hoi-cai-dat') return { henGio: { khach: [{ maKH: 'c?ng', batDoanhThuTendoo: true }] } };
-        if (tin.loai === 'hdt-quet-tendoo-ngay') { lanQuet++; return { ok: true, daQuet: 1 }; }
+        if (tin.loai === 'hdt-quet-tendoo-ngay') {
+            lanQuet++;
+            // ⚠️ Tự NGẮT sau vài vòng. Khi lỗi vòng lặp xuất hiện, mỗi lần làm
+            // mới lại kích một lượt quét mới — không ngắt thì tiến trình quay
+            // mãi, bài kiểm vẫn đỏ nhưng phải đợi bộ gài lỗi cắt sau 2 phút
+            // (ngày 02/10 đã làm cả lượt gài lỗi chạm giới hạn thời gian và bỏ
+            // lại một tệp đang bị gài). Trả "hỏng" thì khiXemBaoCao dừng làm mới.
+            if (lanQuet > 3) return { ok: false };
+            return { ok: true, daQuet: 1 };
+        }
         return { ok: true };
     } } };
     ChenCotKeToan.ganXemBaoCao(cua.document);
@@ -1232,9 +1442,18 @@ test('⭐ con số thời gian lấy từ nhipDo, không viết cứng trong fil
         'file giao diện viết cứng con số thời gian thay vì lấy từ nhipDo');
 });
 
-test('⭐⭐ phiên bản đã tăng', () => {
-    const m = JSON.parse(doc('manifest.json'));
-    assert.ok(m.version > '2.40.0', 'quên tăng phiên bản -> Chrome không nạp bản mới');
+test('⭐⭐ phiên bản đã tăng so với bản ĐÃ GIAO gần nhất', () => {
+    // ⚠️ Hai lỗi của bản trước, lộ ra khi gài lỗi ngày 02/10/2026:
+    //  · so với mốc cũ 2.40.0, nên quên tăng từ 2.41.0 lên 2.42.0 vẫn xanh;
+    //  · so bằng CHUỖI — '2.100.0' > '2.40.0' lại ra SAI vì so từng ký tự.
+    // Mốc là bản đã giao cho chủ dự án gần nhất. Mỗi lần giao bản mới thì nâng
+    // mốc này lên đúng số vừa giao.
+    const DA_GIAO = '2.41.0';
+    const so = (v) => String(v).split('.').map(Number);
+    const [a, b, c] = so(JSON.parse(doc('manifest.json')).version);
+    const [x, y, z] = so(DA_GIAO);
+    const lonHon = a > x || (a === x && (b > y || (b === y && c > z)));
+    assert.ok(lonHon, `phiên bản chưa vượt bản đã giao ${DA_GIAO} -> Chrome không nạp bản mới`);
 });
 
 chay('DOANH THU TENDOO — đọc ngược từ Tendoo về (22/09/2026)');

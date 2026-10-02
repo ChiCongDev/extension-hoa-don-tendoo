@@ -44,7 +44,8 @@ const LE_AN_TOAN_MS = 6 * 60 * 60 * 1000;      // 6 giờ
  * ⚠️ Không đọc được thì trả null, và nơi gọi coi như HẾT HẠN. Thà đi lấy thẻ
  * mới thừa một lần còn hơn dùng một cái thẻ mình không hiểu.
  */
-function hanCuaThe(the) {
+/** Bóc phần giữa (công khai) của thẻ JWT. Hỏng -> null. ⛔ Không in `the`. */
+function thanThe(the) {
     if (typeof the !== 'string') return null;
     const phan = the.split('.');
     if (phan.length !== 3) return null;
@@ -55,13 +56,38 @@ function hanCuaThe(the) {
             typeof atob === 'function'
                 ? atob(dem)
                 : Buffer.from(dem, 'base64').toString('utf8'));
-        const exp = json && json.exp;
-        if (typeof exp !== 'number' || !Number.isFinite(exp) || exp <= 0) return null;
-        return Math.round(exp * 1000);
+        return (json && typeof json === 'object') ? json : null;
     } catch (e) {
-        // ⛔ KHÔNG in `the` ra ở đây, dù chỉ một phần.
         return null;
     }
+}
+
+function hanCuaThe(the) {
+    const json = thanThe(the);
+    const exp = json && json.exp;
+    if (typeof exp !== 'number' || !Number.isFinite(exp) || exp <= 0) return null;
+    return Math.round(exp * 1000);
+}
+
+/**
+ * Mã cửa hàng ghi TRONG thẻ (trường business_id).
+ *
+ * Dùng để biết những khách nào DÙNG CHUNG một cửa hàng Tendoo — chủ dự án xác
+ * nhận 02/10/2026 có khách như vậy (Hải Đăng Sport và Hồng Huệ S8). Tendoo chỉ
+ * trả tổng THEO CỬA HÀNG, nên hai khách chung cửa hàng đọc ra cùng một số; hàng
+ * TỔNG phải cộng cửa hàng ấy MỘT lần chứ không phải hai.
+ *
+ * Lấy từ thẻ chứ không từ két: thẻ chính là thứ máy chủ dùng để quyết định trả
+ * số của cửa hàng nào, nên đây là sự thật, còn két là thứ người gõ tay. Mã cửa
+ * hàng KHÔNG phải bí mật — nó là định danh, không đăng nhập được bằng nó.
+ */
+function cuaHangCuaThe(the) {
+    const json = thanThe(the);
+    const id = json && json.business_id;
+    if (typeof id !== 'string') return null;
+    const s = id.trim();
+    // Chỉ nhận định danh gọn gàng — chặn chuỗi lạ đi thẳng vào sổ kế toán.
+    return /^[A-Za-z0-9-]{1,64}$/.test(s) ? s : null;
 }
 
 /**
@@ -170,7 +196,7 @@ function taoKhoThe(kho) {
     return { ghi, doc, xoa, lietKe, donThe };
 }
 
-const API = { taoKhoThe, hanCuaThe, conDung, cungCuaHang, LE_AN_TOAN_MS };
+const API = { taoKhoThe, hanCuaThe, cuaHangCuaThe, conDung, cungCuaHang, LE_AN_TOAN_MS };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 globalThis.HDT_KhoThe = API;

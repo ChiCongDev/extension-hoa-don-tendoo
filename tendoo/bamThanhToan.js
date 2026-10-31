@@ -82,6 +82,7 @@ const MA = {
 
 const LA_NUT_THANH_TOAN = /thanh toán/i;
 const LA_NUT_LUU_DON = /lưu đơn/i;
+const LA_NUT_THANH_TOAN_TRUOC = /thanh toán trước/i;
 const LA_BANG_XAC_NHAN = /xác nhận thanh toán/i;
 
 // Bảng CHẶN ĐƯỜNG đã gặp thật. Bấm "Thanh toán (F1)" mà tài khoản chưa thiết
@@ -228,14 +229,28 @@ function boGio() {
 function timNutThanhToan(tailieu) {
     const D = boDo();
     const cac = [...tailieu.querySelectorAll('button, [role=button]')];
-    return cac.find(b => {
+    const ungVien = cac.filter(b => {
         // Bỏ qua nút nằm trong bảng nổi. Trang POS thật lúc nào cũng có 2 bảng
         // quảng cáo đè lên, và bảng xác nhận cũng chứa chữ "thanh toán" ở tiêu
         // đề — quét cả trang là có ngày bấm nhầm sang "Trải nghiệm POS V2 ngay".
         if (b.closest && b.closest('.ant-modal, [role=dialog], .ant-drawer')) return false;
         const chu = D.gonChu(b);
-        return LA_NUT_THANH_TOAN.test(chu) && !LA_NUT_LUU_DON.test(chu);
-    }) || null;
+        // ⛔ "Thanh toán trước" là nút KHÁC, không phải nút phát hành.
+        return LA_NUT_THANH_TOAN.test(chu) && !LA_NUT_LUU_DON.test(chu)
+            && !LA_NUT_THANH_TOAN_TRUOC.test(chu);
+    });
+    if (ungVien.length <= 1) return ungVien[0] || null;
+
+    // ⚠️ CA HỎNG 31/10/2026, khách Trang Bé TB, ba lượt liền. Chân giỏ Tendoo
+    // mọc thêm nút xám «Thanh toán trước» đứng TRƯỚC nút đỏ «Thanh toán & Xuất
+    // hóa đơn (F1)». Bản cũ lấy nút ĐẦU TIÊN chứa chữ "thanh toán" nên bấm nhầm
+    // nút xám, Tendoo mở bảng «Thanh toán trước» và máy dừng ở "bảng lạ".
+    //
+    // Còn nhiều ứng viên thì chỉ nhận nút mang chữ "Xuất hóa đơn", và chỉ khi
+    // CHỈ CÓ MỘT. Vẫn không phân biệt được -> trả null (máy dừng, không bấm).
+    // Thà dừng còn hơn đoán: nút này là nút dẫn tới hóa đơn thật.
+    const xuat = ungVien.filter(b => CHU_XUAT_HOA_DON.test(D.gonChu(b)));
+    return xuat.length === 1 ? xuat[0] : null;
 }
 
 /**
@@ -245,11 +260,27 @@ function timNutThanhToan(tailieu) {
  * `.ant-modal-wrap`. Chữ bên trong vẫn đọc được như thường. Nhận diện "bảng
  * đang mở" bằng cách tìm chữ là sai: bảng đã đóng vẫn khớp. Phải xét display.
  * (Không dùng getClientRects vì môi trường test không dựng hình.)
+ *
+ * ⚠️ 31/10/2026: bảng xác nhận mới là một DRAWER trượt từ bên phải
+ * (`payment-confirm-drawer`). Đóng rồi nó vẫn nằm trong trang, chỉ được ẩn bằng
+ * CLASS `ant-drawer-content-wrapper-hidden` (CSS tính ra display:none) — KHÔNG
+ * có `style="display:none"` nào cả. Bản cũ chỉ nhìn thuộc tính inline nên coi
+ * bảng ĐÃ ĐÓNG là đang mở: sang khách kế tiếp, vừa bấm Thanh toán máy đã "thấy"
+ * ngay bảng cũ trước khi bảng mới kịp mở. Đo trên trang thật.
+ *
+ * Nay hỏi thêm display đã tính của trình duyệt, và class ẩn của drawer. Chỉ làm
+ * kiểm tra CHẶT hơn: phần tử nào trước đây bị coi là ẩn thì nay vẫn ẩn.
  */
+const LA_LOP_AN = /(^|\s)ant-drawer-content-wrapper-hidden(\s|$)/;
 function dangHien(e) {
     for (let n = e; n && n.style !== undefined; n = n.parentElement) {
         if (n.style.display === 'none' || n.style.visibility === 'hidden') return false;
         if (n.hasAttribute && n.hasAttribute('hidden')) return false;
+        if (LA_LOP_AN.test(String(n.className || ''))) return false;
+        try {
+            const w = n.ownerDocument && n.ownerDocument.defaultView;
+            if (w && w.getComputedStyle(n).display === 'none') return false;
+        } catch (x) { /* không hỏi được thì dựa vào các dấu hiệu trên */ }
     }
     return true;
 }

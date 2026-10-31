@@ -246,6 +246,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        khongCoDongTong = false, oSoLuongNhanGo = false,
                        kieuNutXoa = 'dangerous', chanGioLech = null, chanGioLechMs = 0,
                        hoaDonDienTu,
+                       nutThanhToanTruoc = false,
                        chanTangTai = 0 } = {}) {
     // 'khong' | true | false — xem chú thích `hoaDonDienTu`.
     const hddt = hoaDonDienTu === undefined ? (giaoDienMoi ? true : 'khong') : hoaDonDienTu;
@@ -276,6 +277,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             <div id="dongTongSp">Tổng <span id="soMon">0</span> sản phẩm : <span id="tongSp">0</span> đ</div>
             <div id="dongTongTt">Tổng thanh toán: <span id="tongTt">0</span> đ</div>
             <div class="flex gap-2 flex-wrap">
+              ${nutThanhToanTruoc ? '<button id="nutThanhToanTruoc" class="ant-btn">Thanh toán trước</button>' : ''}
               <button id="nutLuuDon" class="ant-btn">Lưu đơn (F2)</button>
               <button id="nutThanhToan" class="ant-btn">${hddtBat
                 ? 'Thanh toán &amp; Xuất hóa đơn (F1)' : 'Thanh toán (F1)'}</button>
@@ -420,7 +422,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
     const daTim = [];   // mọi chữ đã gõ vào ô tìm sản phẩm
     const daBam = { thanhToan: 0, luuDon: 0, xacNhan: 0, quayLai: 0,
                     thueBoQua: 0, thueThietLap: 0,
-                    nangCapDong: 0, nangCapDoiNgay: 0 };
+                    nangCapDong: 0, nangCapDoiNgay: 0, thanhToanTruoc: 0 };
 
     const timSp = (ten, gia) => hang.find(h => h.ten === ten && (gia == null || h.gia === gia));
 
@@ -899,6 +901,10 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
         td.getElementById('bangThue').style.display = 'none';
     });
     td.getElementById('nutLuuDon').addEventListener('click', () => { daBam.luuDon++; });
+    // Nút «Thanh toán trước» (chân giỏ Tendoo 31/10/2026): bấm là mở bảng KHÁC,
+    // không phải bảng xác nhận. Bản giả chỉ đếm — máy KHÔNG được bấm nó.
+    const nutTruoc = td.getElementById('nutThanhToanTruoc');
+    if (nutTruoc) nutTruoc.addEventListener('click', () => { daBam.thanhToanTruoc++; });
 
     td.getElementById('xnQuayLai').addEventListener('click', () => {
         daBam.quayLai++;

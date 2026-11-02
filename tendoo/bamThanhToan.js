@@ -996,7 +996,27 @@ function taoLuot() {
         // ⚠️ Đặt TRƯỚC ĐK 4 chứ không phải sau: mọi đường dẫn tới cú bấm đều đi
         // qua đây, và chốt này không đụng vào trang nên xếp sớm bao nhiêu cũng
         // an toàn. Xếp sau là có ngày một nhánh trả về sớm đi vòng qua nó.
-        const hddt = kiemHoaDonDienTu(tailieu);
+        //
+        // ⚠️⚠️ CA HỎNG THẬT 31/10/2026 18:15, khách Hồng Huệ: «CÔNG TẮC "Hóa đơn
+        // điện tử" đang TẮT» — trong khi cửa hàng này luôn để nó BẬT. Đo trên trang
+        // thật 02/11/2026: mỗi đơn mới bắt đầu với công tắc TẮT, và chỉ khi Tendoo
+        // tải xong cấu hình hóa đơn điện tử từ máy chủ nó mới TỰ BẬT. Ngay sau khi
+        // mở trang (đúng cảnh mỗi lần đổi khách) giỏ đã có hàng và tổng đã khớp
+        // trong khi công tắc còn tắt thêm ~270ms. Bản cũ nhìn ĐÚNG MỘT LẦN, trúng
+        // khe ấy là dừng oan.
+        //
+        // Cùng loại bẫy với ĐK 2, 3 và 4: nên cùng một cách chữa — CHỜ, dùng chung
+        // nhịp và hạn với ba chốt kia.
+        //
+        // ⛔ CHỜ CHỈ NHÌN, KHÔNG BẤM GÌ, KHÔNG TỰ BẬT CÔNG TẮC. Hết hạn mà công tắc
+        // vẫn tắt thì DỪNG đúng như cũ: tắt thật vẫn bị chặn, chỉ không còn chặn oan
+        // khi Tendoo mới chậm một nhịp.
+        let hddt = kiemHoaDonDienTu(tailieu);
+        for (let da = 0; !hddt.bat && da <= hanCho; da += nhipCho) {
+            if (da + nhipCho > hanCho) break;
+            await nghi(nhipCho);
+            hddt = kiemHoaDonDienTu(tailieu);
+        }
         if (!hddt.bat) {
             return {
                 ok: false, ma: MA.HOA_DON_DIEN_TU_TAT,
@@ -1011,7 +1031,10 @@ function taoLuot() {
                         + 'chứ KHÔNG xuất hóa đơn nào lên cơ quan thuế, trong khi máy vẫn ghi là '
                         + 'đã ra hóa đơn — sai sổ sách mà không ai biết. Hãy sang tab Tendoo BẬT '
                         + 'công tắc "Hóa đơn điện tử" rồi chạy lại. (Máy KHÔNG tự bật — đó là '
-                        + 'quyết định có hệ quả thuế của bạn.) CHƯA phát hành hóa đơn nào.',
+                        + 'quyết định có hệ quả thuế của bạn.) Máy đã chờ ' + chuThoiGian(hanCho)
+                        + ' mà công tắc vẫn tắt; nếu cửa hàng này bình thường luôn để BẬT thì có thể '
+                        + 'Tendoo chưa tải xong cấu hình hóa đơn điện tử — hãy tải lại (F5) tab '
+                        + 'Tendoo rồi chạy lại. CHƯA phát hành hóa đơn nào.',
             };
         }
 

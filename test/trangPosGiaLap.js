@@ -246,7 +246,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        khongCoDongTong = false, oSoLuongNhanGo = false,
                        kieuNutXoa = 'dangerous', chanGioLech = null, chanGioLechMs = 0,
                        hoaDonDienTu,
-                       nutThanhToanTruoc = false,
+                       nutThanhToanTruoc = false, hddtBatSauMs = 0,
                        chanTangTai = 0 } = {}) {
     // 'khong' | true | false — xem chú thích `hoaDonDienTu`.
     const hddt = hoaDonDienTu === undefined ? (giaoDienMoi ? true : 'khong') : hoaDonDienTu;
@@ -680,6 +680,17 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             setTimeout(() => { td.getElementById('nutThanhToan').disabled = false; },
                        nutTtMoSauMs);
         }
+    }
+    // Công tắc «Hóa đơn điện tử» bắt đầu TẮT rồi TỰ BẬT sau N mili-giây — đúng như
+    // Tendoo thật: mỗi đơn mới khởi đầu với công tắc tắt, chỉ bật khi tải xong cấu
+    // hình hóa đơn điện tử từ máy chủ (đo 02/11/2026: tắt thêm ~270ms sau khi giỏ có hàng).
+    if (hddtBatSauMs > 0 && hddt === false) {
+        setTimeout(() => {
+            const ct = td.querySelector('#dongHddt [role=switch]');
+            ct.setAttribute('aria-checked', 'true');
+            ct.className = 'ant-switch ant-switch-checked';
+            td.getElementById('nutThanhToan').innerHTML = 'Thanh toán &amp; Xuất hóa đơn (F1)';
+        }, hddtBatSauMs);
     }
     // Ca bán hàng đang ĐÓNG: trang hiện nút "Mở ca" ở thanh trên.
     if (coNutMoCa) {

@@ -16,6 +16,7 @@ const path = require('path');
 const vm = require('vm');
 const { JSDOM } = require(process.env.HDT_JSDOM || 'jsdom');
 const { test, ghiChu, chay } = require('./chay');
+require('./hanChoNganChoTest');   // hạn chờ ngắn cho test — xem file đó
 
 const GOC = path.join(__dirname, '..');
 

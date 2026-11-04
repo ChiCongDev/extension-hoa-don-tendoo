@@ -87,6 +87,31 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
         await khoaLuuTru.ghi({ mayId, hetHanLuc: dongHo() + hanKhoaMs, giuLuc: dongHo() });
     }
 
+    // ── GIA HẠN KHÓA TRONG LÚC MỘT KHÁCH ĐANG CHẠY ──────────────────────────
+    //
+    // ⚠️ 03/11/2026 hạn chờ của máy được nâng lên (tối đa ~80 giây ở bước Xác
+    // nhận, 30 giây ở mỗi chốt). Một khách gặp Tendoo chậm ở nhiều bước có thể
+    // chạy QUÁ 2 PHÚT, trong khi khóa chỉ được gia hạn TRƯỚC mỗi khách. Khóa hết
+    // hạn giữa chừng thì chuông hẹn giờ (5 phút/lần) hoặc một lần bấm chạy tay có
+    // thể bắt đầu lượt thứ hai SONG SONG trên cùng tab Tendoo -> hóa đơn trùng.
+    //
+    // Nên: cứ mỗi NHIP_GIA_HAN_KHOA_MS lại gia hạn. Khóa vẫn giữ hạn 2 phút, nên
+    // nếu Chrome bị tắt ngang thì khóa vẫn tự hết sau 2 phút như trước.
+    //
+    // ⛔ CHỈ GIA HẠN KHÓA CÒN LÀ CỦA MÌNH. Khóa mất hoặc đã sang máy khác thì
+    // KHÔNG ghi: ghi đè khóa người khác chính là mở đường cho chạy chồng.
+    const nhipGiaHanMs = tuyChon.nhipGiaHanMs || NhipDo.NHIP_GIA_HAN_KHOA_MS;
+    const datNhip = tuyChon.datNhip || ((hamChay, ms) => setInterval(hamChay, ms));
+    const huyNhip = tuyChon.huyNhip || ((id) => clearInterval(id));
+
+    async function giaHanNeuConCuaMinh() {
+        const hienTai = await khoaLuuTru.doc();
+        if (!hienTai || hienTai.mayId !== mayId) return false;
+        await khoaLuuTru.ghi({ mayId, hetHanLuc: dongHo() + hanKhoaMs,
+                               giuLuc: hienTai.giuLuc || dongHo() });
+        return true;
+    }
+
     async function nhaKhoa() {
         const hienTai = await khoaLuuTru.doc();
         if (!hienTai || hienTai.mayId === mayId) await khoaLuuTru.ghi(null);
@@ -178,6 +203,10 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
                 bao({ loai: 'bat-dau', lenh });
 
                 let kq;
+                // Gia hạn khóa theo nhịp trong suốt thời gian khách này chạy.
+                const nhipKhoa = datNhip(() => {
+                    giaHanNeuConCuaMinh().catch(() => { /* lần sau thử lại */ });
+                }, nhipGiaHanMs);
                 try {
                     kq = await thucThi(lenh);
                 } catch (e) {
@@ -190,6 +219,8 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
                         + 'KHÔNG rõ hóa đơn đã phát hành chưa. Hãy kiểm tra trên Tendoo.';
                     ketQua.bo += await so.boCacLenhCho(ketQua.thongBao);
                     return ketQua;
+                } finally {
+                    huyNhip(nhipKhoa);     // dừng nhịp dù thành công hay ném lỗi
                 }
 
                 if (kq && kq.ok) {
@@ -249,7 +280,7 @@ function taoHangDoi({ so, khoaLuuTru, mayId, tuyChon = {} }) {
         }
     }
 
-    return { xepHang, chayLoat, giuKhoa, giaHanKhoa, nhaKhoa,
+    return { xepHang, chayLoat, giuKhoa, giaHanKhoa, giaHanNeuConCuaMinh, nhaKhoa,
              LOI_DUNG_CA_LOAT, KET_QUA_KHONG_RO };
 }
 

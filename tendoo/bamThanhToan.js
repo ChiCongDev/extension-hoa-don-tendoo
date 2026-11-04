@@ -209,7 +209,7 @@ const CAC_NHAN_HUY = [/^quays*l[ạa]i$/i, /^h[ủu]y( b[ỏo])?$/i, /^[đd][óo
 const NhipDo = (typeof module !== 'undefined' && module.exports)
     ? require('../chung/nhipDo') : globalThis.HDT_NhipDo;
 
-const HAN_CHO_BANG_MS = NhipDo.HAN_CHO_BANG;
+const HAN_CHO_BANG_MS = NhipDo.HAN_CHO_BANG_XAC_NHAN;
 
 function boDo() {
     const D = (typeof globalThis !== 'undefined' && globalThis.HDT_DomReact) || null;
@@ -423,6 +423,59 @@ function keLaiManHinh(tailieu) {
                             : ', tổng ' + Number(tong).toLocaleString('vi-VN') + 'đ'));
     } catch (e) { phan.push('không đọc được giỏ'); }
     return phan.join('; ');
+}
+
+/**
+ * LỚP PHỦ "ĐANG XỬ LÝ" của Tendoo có đang che trang không.
+ *
+ * ⚠️ 03/11/2026, khách Thùy Dương S3: bấm "Xác nhận" xong, 8 giây sau giỏ vẫn còn
+ * hàng, nút Xác nhận KHÔNG quay — máy kết luận KHÔNG RÕ. Đọc mã Tendoo thì thấy
+ * lúc xử lý đơn nó bật một lớp phủ mờ phủ kín trang (`fixed inset-0 z-[9999]`,
+ * chứa vòng quay), gọi máy chủ phát hành hóa đơn, rồi mới đóng bảng và làm trống
+ * giỏ. Máy chỉ biết nhìn NÚT quay nên mù trước tín hiệu này.
+ *
+ * ⛔ CHỈ NHÌN. Còn lớp phủ = Tendoo đang làm = chờ tiếp (tới trần). Hết lớp phủ mà
+ * giỏ còn hàng thì vẫn KHÔNG RÕ, vẫn cấm bấm lại — không nới chốt nào.
+ */
+function tendooDangXuLy(tailieu) {
+    try {
+        for (const e of tailieu.querySelectorAll('div.fixed')) {
+            const lop = String(e.className || '');
+            if (!/(^|\s)inset-0(\s|$)/.test(lop) || !lop.includes('z-[9999]')) continue;
+            // Bảng nổi của CHÍNH MÌNH không phải tín hiệu của Tendoo.
+            let cuaMinh = false;
+            for (let n = e; n; n = n.parentElement) {
+                if (/^hdt-/.test(String(n.id || ''))) { cuaMinh = true; break; }
+            }
+            if (!cuaMinh && dangHien(e)) return true;
+        }
+    } catch (x) { /* không hỏi được thì coi như không thấy */ }
+    return false;
+}
+
+/**
+ * GHI LẠI MỌI THÔNG BÁO NỔI của Tendoo đang hiện — gọi lặp trong lúc chờ.
+ *
+ * ⚠️ Ant Design xóa thông báo sau ~3 giây, mà máy chỉ nhìn màn hình SAU 8 giây
+ * nên chưa bao giờ thấy câu «Tạo đơn thất bại» dù Tendoo nói thẳng ra. Gọi hàm
+ * này mỗi nhịp (100ms) thì không lọt câu nào. Chỉ đọc, không đổi gì.
+ */
+const CHON_THONG_BAO_NOI = '.ant-message-notice-content, .ant-notification-notice, '
+    + '[role=alert], .ant-form-item-explain-error';
+function ghiThongBaoNoi(tailieu, tap) {
+    try {
+        const D = boDo();
+        for (const e of tailieu.querySelectorAll(CHON_THONG_BAO_NOI)) {
+            const t = D.gonChu(e);
+            if (t) tap.add(t.slice(0, 160));
+        }
+    } catch (x) { /* kể được gì hay nấy */ }
+}
+
+/** Bỏ trùng và bỏ chuỗi con (Ant lồng nhiều lớp cho CÙNG một tin). Tối đa 3 tin. */
+function gonThongBaoNoi(tap) {
+    const rieng = [...tap];
+    return rieng.filter(t => !rieng.some(k => k !== t && k.includes(t))).slice(0, 3);
 }
 
 /**
@@ -1502,17 +1555,26 @@ function taoLuot() {
         // tuyệt đối KHÔNG bấm "Xác nhận" lần thứ hai dù chờ bao lâu.
         const hanQuay = tuyChon.hanChoQuay == null
             ? NhipDo.HAN_CHO_TENDOO_QUAY : tuyChon.hanChoQuay;
+        // Thông báo nổi Tendoo hiện trong lúc chờ (tự tắt sau ~3 giây nên phải
+        // ghi lại ngay từng nhịp) — để kể lại trong thông báo lỗi nếu có.
+        const tinNoi = new Set();
         let daCho = 0;
         for (; daCho <= hanGio; daCho += nhip) {
+            ghiThongBaoNoi(tailieu, tinNoi);
             if (B.gioDangTrong(tailieu)) break;
             if (daCho + nhip > hanGio) break;
             await nghi(nhip);
         }
+        // ⚠️ "ĐANG LÀM" = nút Xác nhận còn quay HOẶC lớp phủ "đang xử lý" còn che
+        // trang. Hết cả hai tín hiệu mà giỏ còn hàng -> kết luận ngay.
         for (; !B.gioDangTrong(tailieu) && daCho <= hanGio + hanQuay; daCho += nhip) {
-            if (!dangQuay(nutXacNhan)) break;      // Tendoo thôi làm -> kết luận ngay
+            ghiThongBaoNoi(tailieu, tinNoi);
+            if (!dangQuay(nutXacNhan) && !tendooDangXuLy(tailieu)) break;   // Tendoo thôi làm
             if (daCho + nhip > hanGio + hanQuay) break;
             await nghi(nhip);
         }
+        ghiThongBaoNoi(tailieu, tinNoi);
+        const cacTinNoi = gonThongBaoNoi(tinNoi);
 
         if (B.gioDangTrong(tailieu)) {
             return {
@@ -1525,9 +1587,14 @@ function taoLuot() {
         // vẫn cấm bấm lại. Tiền có thể đã lên cơ quan thuế rồi.
         return {
             ok: false, ma: MA.KHONG_RO, tongLucBam: mongDoi,
-            chuongKeu,
+            chuongKeu, thongBaoTendoo: cacTinNoi,
             thongBao: 'Đã bấm "Xác nhận" nhưng giỏ vẫn còn hàng sau ' + chuThoiGian(daCho)
                 + ' — KHÔNG RÕ hóa đơn đã phát hành hay chưa. '
+                // ⚠️ Câu Tendoo tự nói ra (thường tắt sau 3 giây) — chứng cứ quý nhất
+                // để phân biệt "Tendoo từ chối" với "Tendoo còn đang làm".
+                + (cacTinNoi.length
+                    ? 'Tendoo đã báo trong lúc chờ: ' + cacTinNoi.map(x => '«' + x + '»').join(' / ') + '. '
+                    : 'Tendoo KHÔNG hiện thông báo nào trong lúc chờ. ')
                 // ⚠️ CÂU QUYẾT ĐỊNH. Chuông không kêu = cú bấm không tới được
                 // nút = CHẮC CHẮN chưa phát hành gì. Chuông kêu = Tendoo đã
                 // nhận và từ chối (hoặc đang làm) — bệnh nằm chỗ khác hẳn.
@@ -1552,7 +1619,7 @@ function taoLuot() {
 
 const API = { taoLuot, timNutThanhToan, timBangXacNhan, timBangChanDuong, timNutTheoChu,
               timNutDongThongBao, tenCacNut, docDuongDan, keLaiManHinh, chuThoiGian, gonVien,
-              conTrongTrang, dangQuay, keRuotBang, timNutMoCa,
+              conTrongTrang, dangQuay, keRuotBang, timNutMoCa, tendooDangXuLy,
               kiemHoaDonDienTu, congTacBat, cacCongTac,
               docCacTongTheoNhan, coTongDung, keCacSoTrongBang, CAC_NHAN_TONG,
               soTienSauNhan,

@@ -20,6 +20,7 @@
 const assert = require('node:assert');
 const { JSDOM } = require(process.env.HDT_JSDOM || 'jsdom');
 const { test, ghiChu, chay } = require('./chay');
+require('./hanChoNganChoTest');   // hạn chờ ngắn cho test — xem file đó
 require('../chung/domReact');
 const BoGio = require('../tendoo/boGio');
 globalThis.HDT_BoGio = BoGio;

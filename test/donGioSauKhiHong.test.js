@@ -45,7 +45,8 @@ const { test, ghiChu, chay } = require('./chay');
 // ⛔ CHỈ rút ngắn THỜI GIAN. Không đổi một luật nào.
 const NhipDo = require('../chung/nhipDo');
 for (const k of ['HAN_CHO_BANG', 'HAN_CHO_GIO_TRONG', 'HAN_CHO_BANG_THUE_DONG',
-                 'HAN_CHO_DONG_GIO', 'HAN_CHO_TENDOO_QUAY', 'HAN_CHO_NUT_MO_KHOA']) {
+                 'HAN_CHO_DONG_GIO', 'HAN_CHO_TENDOO_QUAY', 'HAN_CHO_NUT_MO_KHOA',
+                 'HAN_CHO_BANG_XAC_NHAN', 'HAN_CHO_GIO_VE_DU']) {
     NhipDo[k] = 60;
 }
 NhipDo.NHIN_DOM = 30;

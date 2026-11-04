@@ -247,6 +247,7 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
                        kieuNutXoa = 'dangerous', chanGioLech = null, chanGioLechMs = 0,
                        hoaDonDienTu,
                        nutThanhToanTruoc = false, hddtBatSauMs = 0,
+                       lopPhuMs = 0, xacNhanToast = null,
                        chanTangTai = 0 } = {}) {
     // 'khong' | true | false — xem chú thích `hoaDonDienTu`.
     const hddt = hoaDonDienTu === undefined ? (giaoDienMoi ? true : 'khong') : hoaDonDienTu;
@@ -933,12 +934,32 @@ function taoTrangPos({ hang = HANG_MAU, gioBanDau = [], tongBangXn = null,
             l.textContent = xacNhanBaoLoi;
             su.currentTarget.closest('.ant-modal').appendChild(l);
         }
+        // Thông báo nổi của Tendoo (Ant vẽ vào cuối <body>, tự tắt sau ~3 giây) rồi
+        // Tendoo KHÔNG làm gì: giỏ còn nguyên, bảng còn mở.
+        if (xacNhanToast) {
+            const tb = td.createElement('div');
+            tb.className = 'ant-message-notice-content';
+            tb.textContent = xacNhanToast.chu;
+            td.body.appendChild(tb);
+            setTimeout(() => tb.remove(), xacNhanToast.ms);
+            return;
+        }
         if (xacNhanNuot || xacNhanBaoLoi) return;
 
         const xong = () => {
             if (!giuBangSauXacNhan) bangXn.style.display = 'none';
             if (!giuGioSauXacNhan) { gio.length = 0; veGio(); }
         };
+        // Lớp phủ mờ «đang xử lý» phủ kín trang (div.fixed.inset-0.z-[9999]) trong
+        // N mili-giây rồi mới xong — nút Xác nhận KHÔNG quay. Đúng như Tendoo 03/11.
+        if (lopPhuMs > 0) {
+            const lp = td.createElement('div');
+            lp.className = 'fixed inset-0 z-[9999]';
+            lp.innerHTML = '<div class="ant-spin"></div>';
+            td.body.appendChild(lp);
+            setTimeout(() => { lp.remove(); xong(); }, lopPhuMs);
+            return;
+        }
         // Hệ thống thuế trả lời chậm: nút quay vòng chờ rồi mới xong.
         if (xacNhanQuayMs > 0) {
             const n = su.currentTarget;

@@ -689,8 +689,12 @@ function keLaiGio(tailieu) {
     const cac = docCacDongGio(tailieu);
     const tong = docTongGio(tailieu);
     const ke = cac.map(d => `"${gonBot(d.chu)}" ×${d.soLuong}`).join('; ');
+    // ⚠️ "không đọc được" trơ trọi không nói ai lệch với ai (03/11/2026, khách Hải
+    // Đăng Sport). Không đọc được tổng thì kể thêm CẢ BA phép đọc để lần sau biết
+    // ngay nguồn nào chậm/lệch và lệch bao nhiêu.
     return `Giỏ đang có ${cac.length} dòng${ke ? ': ' + ke : ''}. `
-        + `Tổng: ${tong == null ? 'không đọc được' : tienChu(tong) + 'đ'}.`;
+        + `Tổng: ${tong == null ? 'không đọc được' : tienChu(tong) + 'đ'}.`
+        + (tong == null && cac.length ? ` Các phép đọc tổng: ${keTongGio(tailieu)}.` : '');
 }
 
 /**
@@ -726,7 +730,7 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
     // vẽ gì: ô tìm kiếm chưa có, lưới hàng còn rỗng -> báo "không tìm thấy mặt
     // hàng" oan. Chờ ở đây không tốn gì khi trang đã sẵn: thấy là đi ngay.
     const nhipDauTien = tuyChon.nhipNhin || NhipDo.NHIN_DOM;
-    const hanDauTien = tuyChon.doiVeLuoi == null ? NhipDo.HAN_CHO_BANG : tuyChon.doiVeLuoi;
+    const hanDauTien = tuyChon.doiVeLuoi == null ? NhipDo.HAN_CHO_GIO_VE_DU : tuyChon.doiVeLuoi;
     await nhinToiKhi(() => timOTimKiem(tailieu) || docCacTheHang(tailieu).length,
                      { nghi, hanMs: hanDauTien, nhipMs: nhipDauTien });
     const oTim = timOTimKiem(tailieu);
@@ -1043,14 +1047,15 @@ async function boVaoGio(tailieu, danhSach, tuyChon = {}) {
     // lỗi, và báo kèm con số đọc được để còn lần ra nguyên nhân.
     const mongDoi = danhSach.reduce(
         (t, m) => t + Number(m.gia) * Number(m.soLuong), 0);
-    const hanCuoi = tuyChon.doiVeLuoi == null ? NhipDo.HAN_CHO_BANG : tuyChon.doiVeLuoi;
+    const hanCuoi = tuyChon.doiVeLuoi == null ? NhipDo.HAN_CHO_GIO_VE_DU : tuyChon.doiVeLuoi;
     await nhinToiKhi(() => docTongGio(tailieu) === mongDoi,
                      { nghi, hanMs: hanCuoi, nhipMs: nhipDauTien });
 
     const tong = docTongGio(tailieu);
     if (tong == null) {
         return { ok: false, ma: MA.KHONG_DOC_DUOC_TONG,
-                 thongBao: 'Không đọc được "Tổng thanh toán" trên màn hình Tendoo' };
+                 thongBao: 'Không đọc được "Tổng thanh toán" trên màn hình Tendoo. '
+                    + `Các phép đọc tổng: ${keTongGio(tailieu)}.` };
     }
     if (tong !== mongDoi) {
         return {
@@ -1297,7 +1302,7 @@ const API = { coGiaTrongChu, coMaTrongChu, coOMaRieng, docGiaTuLa, docTonTuLa, t
               coBieuTuongXoa, keCacNutTrongDong,
               cacTienTrongKhoi, docThanhTienDong, docTongTuCacDong, docTongTheoNhan, docTongChanGio, boVaoGio, docTongGio, docCacTheHang, docCacDongGoiY, docCacDongGio, timKhoiDong,
               xoaSachGio, timNutXoaDong, timNutCong, gioDangTrong, timOTimKiem,
-              docTongGioChoKip, keTongGio, MA };
+              docTongGioChoKip, keTongGio, keLaiGio, MA };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof globalThis !== 'undefined') globalThis.HDT_BoGio = API;
 
